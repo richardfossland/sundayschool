@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sundayschool",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "routes": [{ "pattern": "school.sundaysuite.app", "custom_domain": true }],
+  "observability": {
+    "enabled": true
+  }
+  // NEXT_PUBLIC_* are build-time inlined (set in .env.local before cf:build).
+  //
+  // Reads (bibliotek + spiller) need NO secret — anon key + `read published` RLS.
+  // Seeding uses SUPABASE_SERVICE_ROLE_KEY locally (never a Worker secret in MVP:
+  // the app has no server write paths yet). Add it with `wrangler secret put`
+  // only when write routes land.
+}
