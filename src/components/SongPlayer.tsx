@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Music, Plug } from 'lucide-react'
+import { Music, Plug, ListMusic } from 'lucide-react'
 import type { Song, HandFilter } from '@/types/song'
 import { usePlayer } from '@/lib/store'
 import { getEngine } from '@/lib/engine'
@@ -11,13 +11,27 @@ import { sectionOf } from '@/lib/song/sections'
 import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useWaitMode } from '@/lib/useWaitMode'
+import { useChordMode } from '@/lib/useChordMode'
+import type { ChordLevel } from '@/lib/chord-match'
+import { voicingOverlay } from '@/lib/voicing-hints'
+import type { Feedback } from '@/lib/useWaitMode'
+import { KEY_NAMES } from '@/lib/music'
+import { cn } from '@/lib/cn'
 import { FallingNotes } from './FallingNotes'
+import { FallingChords } from './FallingChords'
 import { Keyboard } from './Keyboard'
 import { ChordStrip } from './ChordStrip'
 import { SectionNav } from './SectionNav'
 import { TransportBar } from './TransportBar'
 import { NotationSong as NotationSongLazy } from './NotationSongLazy'
 import { keyboardLayout, padToC } from '@/lib/keyboard-geometry'
+
+const CHORD_LEVELS: { level: ChordLevel; label: string }[] = [
+  { level: 1, label: 'Grunnstilling' },
+  { level: 2, label: 'Inversjoner' },
+  { level: 3, label: 'Utvidelser' },
+  { level: 4, label: 'Gospel' },
+]
 
 // ── SongPlayer — the orchestrator ────────────────────────────────────────────
 // Owns the engine lifecycle, MIDI, wait-mode wiring and layout. Everything is
@@ -48,6 +62,7 @@ export function SongPlayer({ song }: Props) {
   const [midi, setMidi] = useState<MidiConnection | null>(null)
   const [midiError, setMidiError] = useState<string | null>(null)
   const [showNotation, setShowNotation] = useState(false)
+  const [chordMode, setChordMode] = useState(false)
 
   // Transposition is a pure number transform: nearest-path offset → transposed
   // doc. Both the visuals AND the engine read this same transposed doc (engine is
@@ -126,6 +141,31 @@ export function SongPlayer({ song }: Props) {
   const inputRef = useRef(wait.input)
   inputRef.current = wait.input
 
+  // Besifringsmodus (chord mode): step the chord track, gate on a held grip at
+  // the chosen level. Shares the section/loop range with wait-mode.
+  const chord = useChordMode(doc.chords, { range: waitRange, onLoopComplete: onWaitLoop })
+
+  // Route live MIDI to whichever trainer is active (updated every render). The
+  // connectMidi handlers are installed once and read this ref.
+  const midiRoute = useRef<{ onNoteOn: (p: number) => void; onNoteOff: (p: number) => void }>({
+    onNoteOn: () => {},
+    onNoteOff: () => {},
+  })
+  midiRoute.current.onNoteOn = chordMode ? chord.noteOn : (p: number) => inputRef.current(p)
+  midiRoute.current.onNoteOff = chordMode ? chord.noteOff : () => {}
+
+  // Enter/leave besifringsmodus: stop the transport + wait-mode on enter.
+  useEffect(() => {
+    if (chordMode) {
+      getEngine().stop()
+      if (usePlayer.getState().waitMode) usePlayer.getState().setWaitMode(false)
+      chord.start()
+    } else {
+      chord.stop()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chordMode])
+
   // Enter/leave wait-mode: stop the transport on enter, reset on leave.
   useEffect(() => {
     if (waitMode) {
@@ -189,8 +229,8 @@ export function SongPlayer({ song }: Props) {
     setMidiError(null)
     try {
       const conn = await connectMidi({
-        onNoteOn: (pitch) => inputRef.current(pitch),
-        onNoteOff: () => {},
+        onNoteOn: (pitch) => midiRoute.current.onNoteOn(pitch),
+        onNoteOff: (pitch) => midiRoute.current.onNoteOff(pitch),
       })
       if (!conn) setMidiError('MIDI støttes ikke her — bruk Chrome/Edge, eller klikk tangentene.')
       else setMidi(conn)
@@ -204,7 +244,26 @@ export function SongPlayer({ song }: Props) {
     () => doc.notes.filter((n) => hand === 'both' || n.h === hand),
     [doc, hand],
   )
-  const keyboardBeat = waitMode ? -1 : currentBeat
+  // Suppress note-based highlighting in both trainers (they drive the keyboard
+  // via `expected`/`feedback` instead).
+  const keyboardBeat = chordMode || waitMode ? -1 : currentBeat
+
+  // In besifringsmodus the held grip is outlined, and a match/mismatch flashes
+  // every held key green/red; a voicing hint dots the suggested notes.
+  const chordFeedbackMap = useMemo<Map<number, Feedback> | undefined>(() => {
+    if (!chordMode) return undefined
+    const m = new Map<number, Feedback>()
+    if (chord.feedback === 'valid' || chord.feedback === 'wrong') {
+      const kind: Feedback = chord.feedback === 'valid' ? 'hit' : 'miss'
+      for (const p of chord.held) m.set(p, kind)
+    }
+    return m
+  }, [chordMode, chord.feedback, chord.held])
+  const chordOverlay =
+    chordMode && chord.currentChord ? voicingOverlay(chord.currentChord, chord.level) : undefined
+
+  const chordBeat = chord.currentBeat ?? 0
+  const stripBeat = chordMode ? chordBeat : waitMode ? (wait.currentStepBeat ?? 0) : currentBeat
 
   return (
     <div className="flex flex-col gap-4">
@@ -220,6 +279,18 @@ export function SongPlayer({ song }: Props) {
           )}
         </span>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setChordMode((v) => !v)}
+            aria-pressed={chordMode}
+            title="Øv på akkordgrep etter besifring"
+            className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm transition-colors ${
+              chordMode
+                ? 'border-[var(--color-amber)] text-[var(--color-amber)]'
+                : 'border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-ivory)]'
+            }`}
+          >
+            <ListMusic className="h-4 w-4" /> Besifring
+          </button>
           <button
             onClick={() => setShowNotation((v) => !v)}
             aria-pressed={showNotation}
@@ -247,21 +318,33 @@ export function SongPlayer({ song }: Props) {
           always align pixel-for-pixel. */}
       <div className="scroll-x rounded-2xl border border-[var(--color-border)] bg-[var(--color-raised)] p-3">
         <div style={{ width: totalWidth }} className="flex flex-col gap-2">
-          <FallingNotes
-            doc={doc}
-            lowMidi={LOW_MIDI}
-            highMidi={HIGH_MIDI}
-            whiteKeyWidth={WHITE_KEY_WIDTH}
-            waitBeat={waitMode ? wait.currentStepBeat : null}
-            beatOverride={waitMode ? wait.currentStepBeat : null}
-          />
+          {chordMode ? (
+            <FallingChords
+              chords={doc.chords}
+              keySignature={doc.keySignature}
+              beatOverride={chordBeat}
+              activeIndex={chord.index}
+              hit={chord.feedback === 'valid'}
+              widthPx={totalWidth}
+            />
+          ) : (
+            <FallingNotes
+              doc={doc}
+              lowMidi={LOW_MIDI}
+              highMidi={HIGH_MIDI}
+              whiteKeyWidth={WHITE_KEY_WIDTH}
+              waitBeat={waitMode ? wait.currentStepBeat : null}
+              beatOverride={waitMode ? wait.currentStepBeat : null}
+            />
+          )}
           <Keyboard
             scroll={false}
             notes={keyboardNotes}
             currentBeat={keyboardBeat}
-            expected={waitMode ? wait.expected : undefined}
-            feedback={waitMode ? wait.feedback : undefined}
-            onKeyPress={(m) => inputRef.current(m)}
+            expected={chordMode ? chord.held : waitMode ? wait.expected : undefined}
+            feedback={chordMode ? chordFeedbackMap : waitMode ? wait.feedback : undefined}
+            overlay={chordOverlay}
+            onKeyPress={(m) => (chordMode ? chord.toggleHold(m) : inputRef.current(m))}
             lowMidi={LOW_MIDI}
             highMidi={HIGH_MIDI}
             whiteKeyWidth={WHITE_KEY_WIDTH}
@@ -269,11 +352,7 @@ export function SongPlayer({ song }: Props) {
         </div>
       </div>
 
-      <ChordStrip
-        chords={doc.chords}
-        keySignature={doc.keySignature}
-        currentBeat={waitMode ? (wait.currentStepBeat ?? 0) : currentBeat}
-      />
+      <ChordStrip chords={doc.chords} keySignature={doc.keySignature} currentBeat={stripBeat} />
 
       {/* Real notation, synchronized to the same transposed doc («notasjonsbro»).
           Click a bar to seek the transport there. */}
@@ -292,32 +371,94 @@ export function SongPlayer({ song }: Props) {
 
       <SectionNav
         sections={doc.sections}
-        currentBeat={waitMode ? (wait.currentStepBeat ?? 0) : currentBeat}
+        currentBeat={stripBeat}
         loop={loop}
         onSelect={onSelectSection}
         onLoop={onLoopSection}
       />
 
-      <TransportBar
-        isPlaying={isPlaying}
-        isLoading={isLoading}
-        onPlayToggle={onPlayToggle}
-        bpm={bpm}
-        defaultBpm={song.default_bpm}
-        onBpm={onBpm}
-        targetKey={targetKey}
-        onKey={onKey}
-        hand={hand}
-        onHand={onHand}
-        metronome={metronome}
-        onMetronomeToggle={() => usePlayer.getState().toggleMetronome()}
-        countIn={countIn}
-        onCountInToggle={() => usePlayer.getState().toggleCountIn()}
-        waitMode={waitMode}
-        onWaitToggle={() => usePlayer.getState().setWaitMode(!usePlayer.getState().waitMode)}
-        loop={loop !== null}
-        onLoopToggle={onLoopToggle}
-      />
+      {chordMode ? (
+        /* Besifringsmodus controls: level selector + key (the transport does not
+           apply — the trainer is driven entirely by the held grip). */
+        <div className="flex flex-col gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="flex items-start gap-2">
+            <span className="mt-1.5 w-16 shrink-0 text-sm text-[var(--color-muted)]">Nivå</span>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {CHORD_LEVELS.map(({ level, label }) => (
+                <button
+                  key={level}
+                  onClick={() => chord.setLevel(level)}
+                  aria-pressed={chord.level === level}
+                  className={cn(
+                    'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                    chord.level === level
+                      ? 'border-[var(--color-amber)] bg-[var(--color-amber)] text-[var(--color-ink-on-amber)]'
+                      : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-ivory)] hover:border-[var(--color-amber)]/50',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1.5 w-16 shrink-0 text-sm text-[var(--color-muted)]">Toneart</span>
+            <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+              {KEY_NAMES.map((name, k) => (
+                <button
+                  key={k}
+                  onClick={() => onKey(k)}
+                  aria-pressed={targetKey === k}
+                  className={cn(
+                    'rounded-lg border py-1.5 text-sm font-medium tabular-nums transition-colors',
+                    targetKey === k
+                      ? 'border-[var(--color-amber)] bg-[var(--color-amber)] text-[var(--color-ink-on-amber)]'
+                      : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-ivory)] hover:border-[var(--color-amber)]/50',
+                  )}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <TransportBar
+          isPlaying={isPlaying}
+          isLoading={isLoading}
+          onPlayToggle={onPlayToggle}
+          bpm={bpm}
+          defaultBpm={song.default_bpm}
+          onBpm={onBpm}
+          targetKey={targetKey}
+          onKey={onKey}
+          hand={hand}
+          onHand={onHand}
+          metronome={metronome}
+          onMetronomeToggle={() => usePlayer.getState().toggleMetronome()}
+          countIn={countIn}
+          onCountInToggle={() => usePlayer.getState().toggleCountIn()}
+          waitMode={waitMode}
+          onWaitToggle={() => usePlayer.getState().setWaitMode(!usePlayer.getState().waitMode)}
+          loop={loop !== null}
+          onLoopToggle={onLoopToggle}
+        />
+      )}
+
+      {chordMode && (
+        <p className="text-sm text-[var(--color-muted)]">
+          Spill akkorden{' '}
+          {chord.currentChord && (
+            <span className="font-display text-[var(--color-amber)]">
+              {chord.index + 1} / {chord.total}
+            </span>
+          )}{' '}
+          — hold grepet (MIDI eller klikk tangentene). Prikkene viser et forslag til grep.
+          {chord.feedback === 'wrong' && (
+            <span className="text-[var(--color-danger)]"> Feil tone — prøv igjen.</span>
+          )}
+        </p>
+      )}
 
       {waitMode && (
         <p className="text-sm text-[var(--color-muted)]">

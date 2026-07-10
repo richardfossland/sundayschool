@@ -19,6 +19,7 @@ import { cn } from '@/lib/cn'
 
 const NAV: { href: string; label: string }[] = [
   { href: '/bibliotek', label: 'Bibliotek' },
+  { href: '/egen-midi', label: 'Egen MIDI' },
   { href: '/om-rettigheter', label: 'Om rettigheter' },
 ]
 
