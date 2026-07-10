@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // What a Friend We Have in Jesus (CONVERSE). F major, 4/4, 16 bars.
 // Charles Converse (d. 1918) / Joseph Scriven (d. 1886).

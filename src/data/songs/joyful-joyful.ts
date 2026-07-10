@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // Joyful, Joyful, We Adore Thee (HYMN TO JOY — Beethoven, 9. symfoni 1824).
 // G major, 4/4, 16 bars. Difficulty 2: melody + alto in thirds (RH),

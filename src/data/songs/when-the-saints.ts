@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // When the Saints Go Marching In. 4/4, C major, 3-beat pickup, 14 bars.
 // Traditional American spiritual (published early 1900s, roots older).

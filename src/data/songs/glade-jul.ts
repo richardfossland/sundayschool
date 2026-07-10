@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // Glade jul (Stille Nacht / Silent Night). Notated in 3/4 (common hymnal form
 // of the 6/8 original — dotted figures keep the lilt). C major, 24 bars.

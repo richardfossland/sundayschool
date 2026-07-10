@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // Kum ba yah. Traditional spiritual (first recorded 1920s, roots older).
 // C major, 3/4, 16 bars (4 lines).

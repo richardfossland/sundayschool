@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // Påskemorgen slukker sorgen (Lindeman 1864 / Grundtvig).
 // D major, 4/4, 8 bars. Melody reconstructed by ear — flagged for verification

@@ -1,6 +1,6 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
-import { amazingGrace } from './amazing-grace'
+import { line, stack, ch, song } from './_helpers.ts'
+import { amazingGrace } from './amazing-grace.ts'
 
 // Amazing Grace — firstemmig-inspirert utgave (difficulty 2). Same melody as
 // the enkel arrangement; RH adds an alto line in (mostly) thirds/sixths and

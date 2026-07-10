@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // Swing Low, Sweet Chariot. 4/4, F major, 16 bars (refreng ×2, vers, refreng).
 // Traditional spiritual (Wallis Willis, ca. 1860s; published 1872, Fisk Jubilee

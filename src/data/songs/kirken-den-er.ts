@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // Kirken den er et gammelt hus (Lindeman 1840 / Grundtvig).
 // F major, 4/4, 8 bars. Melody reconstructed by ear — flagged for verification

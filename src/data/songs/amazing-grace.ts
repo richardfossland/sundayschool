@@ -1,5 +1,5 @@
 import type { SeedSong } from '@/types/song'
-import { line, stack, ch, song } from './_helpers'
+import { line, stack, ch, song } from './_helpers.ts'
 
 // Amazing Grace (NEW BRITAIN). 3/4, F major, 1-beat pickup, 16 bars.
 // Melody: John Newton's text (d. 1807), tune from Southern Harmony (1835).
