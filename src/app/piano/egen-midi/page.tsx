@@ -45,11 +45,11 @@ export default function EgenMidiPage() {
     <AppShell>
       <main className="mx-auto max-w-5xl px-4 py-8 sm:py-10">
         <Link
-          href="/bibliotek"
+          href="/piano"
           className="inline-flex items-center gap-1.5 text-sm text-[var(--color-muted)] transition-colors hover:text-[var(--color-ivory)]"
         >
           <ArrowLeft className="h-4 w-4" />
-          Bibliotek
+          Piano
         </Link>
 
         <h1 className="mt-3 font-display text-3xl text-[var(--color-ivory)] sm:text-4xl">Egen MIDI</h1>

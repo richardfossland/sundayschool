@@ -7,13 +7,18 @@ import type { SongMeta, Tradition, Difficulty } from '@/types/song'
 import { FALLBACK_META, fetchSongs } from '@/lib/songs'
 import { getProgress, type Progress } from '@/lib/progress'
 import { NOTE_NAMES } from '@/lib/music'
-import { AppShell } from '@/components/AppShell'
 import { cn } from '@/lib/cn'
+
+// ── SongLibraryList ───────────────────────────────────────────────────────────
+// The reusable song browser (filters + card grid) lifted out of the old
+// /bibliotek page so every instrument fag can share it. `hrefBase` is the route
+// each card links to (piano → '/piano/sang'); the subject prefix used for
+// progress badges is derived from it (first path segment), matching the
+// `{fag}:{slug}` keys written by lib/progress.
 
 type TradFilter = Tradition | 'all'
 type DiffFilter = Difficulty | 'all'
 
-// Ordered label maps — the library filter chips and card badges read from these.
 const TRADITION_LABEL: Record<Tradition, string> = {
   salme: 'Salmer',
   hymne: 'Hymner',
@@ -60,11 +65,14 @@ function DifficultyDots({ level }: { level: Difficulty }) {
   )
 }
 
-export default function BibliotekPage() {
+export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
   const [songs, setSongs] = useState<SongMeta[]>(FALLBACK_META)
   const [trad, setTrad] = useState<TradFilter>('all')
   const [diff, setDiff] = useState<DiffFilter>('all')
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS)
+
+  // Subject prefix for progress keys, e.g. '/piano/sang' → 'piano'.
+  const subject = useMemo(() => hrefBase.replace(/^\/+/, '').split('/')[0] || 'piano', [hrefBase])
 
   useEffect(() => {
     let alive = true
@@ -77,7 +85,6 @@ export default function BibliotekPage() {
     }
   }, [])
 
-  // Only offer chips for traditions actually present in the library.
   const traditions = useMemo(() => {
     const present = new Set(songs.map((s) => s.tradition))
     return TRADITION_ORDER.filter((t) => present.has(t))
@@ -92,80 +99,76 @@ export default function BibliotekPage() {
   )
 
   return (
-    <AppShell>
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
-        <header className="mb-7">
-          <h1 className="font-display text-3xl text-[var(--color-ivory)] sm:text-4xl">Bibliotek</h1>
-          <p className="mt-2 max-w-xl text-[var(--color-muted)]">
-            Bla i repertoaret av salmer, hymner, spirituals og gospel. Velg en sang for å øve med
-            fallende noter.
-          </p>
-        </header>
-
-        {/* Filters */}
-        <div className="mb-6 flex flex-col gap-3">
-          <FilterRow label="Tradisjon">
-            <Chip active={trad === 'all'} onClick={() => setTrad('all')}>
-              Alle
+    <>
+      {/* Filters */}
+      <div className="mb-6 flex flex-col gap-3">
+        <FilterRow label="Tradisjon">
+          <Chip active={trad === 'all'} onClick={() => setTrad('all')}>
+            Alle
+          </Chip>
+          {traditions.map((t) => (
+            <Chip key={t} active={trad === t} onClick={() => setTrad(t)}>
+              {TRADITION_LABEL[t]}
             </Chip>
-            {traditions.map((t) => (
-              <Chip key={t} active={trad === t} onClick={() => setTrad(t)}>
-                {TRADITION_LABEL[t]}
-              </Chip>
-            ))}
-          </FilterRow>
-          <FilterRow label="Nivå">
-            <Chip active={diff === 'all'} onClick={() => setDiff('all')}>
-              Alle
+          ))}
+        </FilterRow>
+        <FilterRow label="Nivå">
+          <Chip active={diff === 'all'} onClick={() => setDiff('all')}>
+            Alle
+          </Chip>
+          {([1, 2, 3] as Difficulty[]).map((d) => (
+            <Chip key={d} active={diff === d} onClick={() => setDiff(d)}>
+              {DIFFICULTY_LABEL[d]}
             </Chip>
-            {([1, 2, 3] as Difficulty[]).map((d) => (
-              <Chip key={d} active={diff === d} onClick={() => setDiff(d)}>
-                {DIFFICULTY_LABEL[d]}
-              </Chip>
-            ))}
-          </FilterRow>
-        </div>
+          ))}
+        </FilterRow>
+      </div>
 
-        {/* Grid / empty state */}
-        {songs.length === 0 ? (
-          <EmptyState
-            title="Innhold på vei"
-            body="Biblioteket fylles snart med salmer, hymner, spirituals og gospel."
-          />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            title="Ingen treff"
-            body="Ingen sanger matcher filtrene. Prøv å nullstille tradisjon eller nivå."
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((song) => (
+      {/* Grid / empty state */}
+      {songs.length === 0 ? (
+        <EmptyState
+          title="Innhold på vei"
+          body="Biblioteket fylles snart med salmer, hymner, spirituals og gospel."
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="Ingen treff"
+          body="Ingen sanger matcher filtrene. Prøv å nullstille tradisjon eller nivå."
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((song) => {
+            const key = `${subject}:${song.slug}`
+            return (
               <SongCard
                 key={song.slug}
                 song={song}
-                practiced={progress.practiced.includes(song.slug)}
-                bestBpm={progress.bestBpm[song.slug]}
+                hrefBase={hrefBase}
+                practiced={progress.practiced.includes(key)}
+                bestBpm={progress.bestBpm[key]}
               />
-            ))}
-          </div>
-        )}
-      </main>
-    </AppShell>
+            )
+          })}
+        </div>
+      )}
+    </>
   )
 }
 
 function SongCard({
   song,
+  hrefBase,
   practiced,
   bestBpm,
 }: {
   song: SongMeta
+  hrefBase: string
   practiced: boolean
   bestBpm?: number
 }) {
   return (
     <Link
-      href={`/sang/${song.slug}`}
+      href={`${hrefBase}/${song.slug}`}
       className="group flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 transition-colors hover:border-[var(--color-amber)]/50"
     >
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -186,9 +189,7 @@ function SongCard({
       <h2 className="font-display text-xl leading-snug text-[var(--color-ivory)] group-hover:text-[var(--color-amber)]">
         {song.title}
       </h2>
-      {song.subtitle && (
-        <p className="mt-1 text-sm text-[var(--color-muted)]">{song.subtitle}</p>
-      )}
+      {song.subtitle && <p className="mt-1 text-sm text-[var(--color-muted)]">{song.subtitle}</p>}
 
       <div className="mt-auto flex items-center gap-3 pt-4 text-xs text-[var(--color-muted)]">
         <DifficultyDots level={song.difficulty} />

@@ -81,6 +81,10 @@ export function SongPlayer({ song }: Props) {
   const loopRef = useRef(loop)
   loopRef.current = loop
 
+  // Subject-prefixed progress key (Skolen v2 — all keys are `{fag}:{slug}`).
+  // Piano is the only instrument that mounts SongPlayer today.
+  const progressKey = `piano:${song.slug}`
+
   // Active section under the play-head (for progress + wait-mode range default).
   const activeSection = useMemo(() => sectionOf(doc, currentBeat), [doc, currentBeat])
 
@@ -134,8 +138,8 @@ export function SongPlayer({ song }: Props) {
     ? [activeSection.startBeat, activeSection.endBeat]
     : loop
   const onWaitLoop = useCallback(
-    () => recordPractice(song.slug, bpmRef.current, activeSection?.id),
-    [song.slug, activeSection],
+    () => recordPractice(progressKey, bpmRef.current, activeSection?.id),
+    [progressKey, activeSection],
   )
   const wait = useWaitMode(doc.notes, { range: waitRange, hand, onLoopComplete: onWaitLoop })
   const inputRef = useRef(wait.input)
@@ -185,10 +189,10 @@ export function SongPlayer({ song }: Props) {
       return
     }
     if (currentBeat < prevBeatRef.current - 0.5) {
-      recordPractice(song.slug, bpmRef.current)
+      recordPractice(progressKey, bpmRef.current)
     }
     prevBeatRef.current = currentBeat
-  }, [currentBeat, isPlaying, song.slug])
+  }, [currentBeat, isPlaying, progressKey])
 
   // MIDI cleanup on unmount / reconnect.
   useEffect(() => () => midi?.dispose(), [midi])
@@ -197,7 +201,7 @@ export function SongPlayer({ song }: Props) {
     const engine = getEngine()
     if (usePlayer.getState().isPlaying) {
       engine.stop()
-      recordPractice(song.slug, usePlayer.getState().bpm, usePlayer.getState().activeSectionId ?? undefined)
+      recordPractice(progressKey, usePlayer.getState().bpm, usePlayer.getState().activeSectionId ?? undefined)
     } else {
       if (usePlayer.getState().waitMode) usePlayer.getState().setWaitMode(false)
       void engine.play()

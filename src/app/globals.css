@@ -22,6 +22,18 @@
    * components — new call sites should use this; existing ones are outside
    * W1's scope to migrate). */
   --color-danger: #C7534E;
+
+  /* ── Fag-aksenter (Skolen v2) ───────────────────────────────────────────
+   * One accent per subject. Piano keeps the suite gold; the rest are harmonic
+   * warm/jewel tones tuned to the "scene" palette so every subject card reads
+   * as one family. Used by SubjectCard, the school launcher and fag-headers. */
+  --fag-piano:    #EBB84B; /* = --color-amber, suite gold */
+  --fag-gitar:    #D9955C; /* copper / wood */
+  --fag-bass:     #A5695F; /* deep mahogany rose (low & warm) */
+  --fag-trommer:  #D07B63; /* clay terracotta */
+  --fag-teologi:  #C9A34E; /* antique parchment gold */
+  --fag-teori:    #5FA9A6; /* muted teal — analytic, sea sibling */
+  --fag-gehor:    #9E93C4; /* soft violet — listening */
 }
 
 @theme inline {

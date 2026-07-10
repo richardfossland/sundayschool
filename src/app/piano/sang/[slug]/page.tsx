@@ -43,11 +43,11 @@ export default function SangPage() {
               Sangen finnes ikke, eller er ikke publisert enda.
             </p>
             <Link
-              href="/bibliotek"
+              href="/piano"
               className="mt-6 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium text-[var(--color-ivory)] transition-colors hover:bg-[var(--color-surface)]"
             >
               <ArrowLeft className="h-4 w-4" />
-              Til biblioteket
+              Til piano
             </Link>
           </div>
         )}
@@ -56,11 +56,11 @@ export default function SangPage() {
           <>
             <div className="mb-5">
               <Link
-                href="/bibliotek"
+                href="/piano"
                 className="inline-flex items-center gap-1.5 text-sm text-[var(--color-muted)] transition-colors hover:text-[var(--color-ivory)]"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Bibliotek
+                Piano
               </Link>
               <h1 className="mt-3 font-display text-3xl text-[var(--color-ivory)] sm:text-4xl">
                 {state.song.title}

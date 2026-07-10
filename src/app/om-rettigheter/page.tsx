@@ -26,6 +26,25 @@ const LAYERS = [
   },
 ]
 
+/** Self-hosted sample sets and their licences (see /samples/CREDITS.md). */
+const AUDIO_SOURCES = [
+  {
+    instrument: 'Piano',
+    body: 'Salamander Grand Piano (subset). Innspilt av Alexander Holm.',
+    licence: 'CC-BY 3.0',
+  },
+  {
+    instrument: 'Gitar og bass',
+    body: 'Akustisk gitar og elbass fra tonejs-instruments (Iowa-innspillinger).',
+    licence: 'CC-BY 3.0',
+  },
+  {
+    instrument: 'Trommer',
+    body: 'Enkelttreff fra Sonic Pi (opprinnelig freesound.org), navngitt etter GM-tromme-ID.',
+    licence: 'CC0 (fritt tilgjengelig)',
+  },
+]
+
 /** Role labels for the rights table. */
 const ROLE_LABEL: Record<string, string> = {
   komponist: 'Komponist',
@@ -99,6 +118,39 @@ export default function OmRettigheterPage() {
             <strong className="text-[var(--color-ivory)]">Din egen MIDI.</strong> Hvis du laster opp
             en MIDI-fil for å øve på den, behandles den kun lokalt i nettleseren din. Den lastes
             aldri opp til noen server og lagres aldri hos oss.
+          </p>
+        </section>
+
+        {/* Audio samples */}
+        <section className="mb-12">
+          <h2 className="mb-1 font-display text-2xl text-[var(--color-ivory)]">Lyd</h2>
+          <p className="mb-5 text-sm text-[var(--color-muted)]">
+            Instrumentlydene er ekte innspilte toner (samples) som vi hoster selv — ingen ekstern
+            lydtjeneste. Hvert sett er fritt lisensiert:
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {AUDIO_SOURCES.map((a) => (
+              <div
+                key={a.instrument}
+                className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
+              >
+                <h3 className="font-display text-lg text-[var(--color-amber)]">{a.instrument}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--color-muted)]">{a.body}</p>
+                <p className="mt-3 text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                  {a.licence}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-sm text-[var(--color-muted)]">
+            Full kilde- og lisensliste per lydfil finner du i{' '}
+            <a
+              href="/samples/CREDITS.md"
+              className="text-[var(--color-amber)] underline underline-offset-2"
+            >
+              lyd-creditsfilen
+            </a>
+            .
           </p>
         </section>
 
