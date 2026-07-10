@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plug } from 'lucide-react'
+import { Music, Plug } from 'lucide-react'
 import type { Song, HandFilter } from '@/types/song'
 import { usePlayer } from '@/lib/store'
 import { getEngine } from '@/lib/engine'
@@ -16,6 +16,7 @@ import { Keyboard } from './Keyboard'
 import { ChordStrip } from './ChordStrip'
 import { SectionNav } from './SectionNav'
 import { TransportBar } from './TransportBar'
+import { NotationSong as NotationSongLazy } from './NotationSongLazy'
 import { keyboardLayout, padToC } from '@/lib/keyboard-geometry'
 
 // ── SongPlayer — the orchestrator ────────────────────────────────────────────
@@ -46,6 +47,7 @@ export function SongPlayer({ song }: Props) {
 
   const [midi, setMidi] = useState<MidiConnection | null>(null)
   const [midiError, setMidiError] = useState<string | null>(null)
+  const [showNotation, setShowNotation] = useState(false)
 
   // Transposition is a pure number transform: nearest-path offset → transposed
   // doc. Both the visuals AND the engine read this same transposed doc (engine is
@@ -217,14 +219,27 @@ export function SongPlayer({ song }: Props) {
             'Bruk skjermklaviaturet — eller koble til et MIDI-keyboard'
           )}
         </span>
-        {midiSupported() && !midi && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={onConnectMidi}
-            className="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-3.5 py-2 text-sm text-[var(--color-muted)] transition-colors hover:text-[var(--color-ivory)]"
+            onClick={() => setShowNotation((v) => !v)}
+            aria-pressed={showNotation}
+            className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm transition-colors ${
+              showNotation
+                ? 'border-[var(--color-amber)] text-[var(--color-amber)]'
+                : 'border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-ivory)]'
+            }`}
           >
-            <Plug className="h-4 w-4" /> Koble til MIDI
+            <Music className="h-4 w-4" /> Noter
           </button>
-        )}
+          {midiSupported() && !midi && (
+            <button
+              onClick={onConnectMidi}
+              className="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-3.5 py-2 text-sm text-[var(--color-muted)] transition-colors hover:text-[var(--color-ivory)]"
+            >
+              <Plug className="h-4 w-4" /> Koble til MIDI
+            </button>
+          )}
+        </div>
       </div>
       {midiError && <p className="text-xs text-[var(--color-danger)]">{midiError}</p>}
 
@@ -259,6 +274,21 @@ export function SongPlayer({ song }: Props) {
         keySignature={doc.keySignature}
         currentBeat={waitMode ? (wait.currentStepBeat ?? 0) : currentBeat}
       />
+
+      {/* Real notation, synchronized to the same transposed doc («notasjonsbro»).
+          Click a bar to seek the transport there. */}
+      {showNotation && (
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <NotationSongLazy
+            doc={doc}
+            follow={isPlaying}
+            onSeek={(beat) => {
+              getEngine().seekTo(beat)
+              usePlayer.getState().set({ currentBeat: beat })
+            }}
+          />
+        </div>
+      )}
 
       <SectionNav
         sections={doc.sections}
