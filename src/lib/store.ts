@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import type { HandFilter } from '@/types/song'
 
+// TODO(W0-A): replace this local alias with `import type { InstrumentId } from
+// '@/lib/instruments'` once that module lands. Kept local so this file
+// typechecks while instruments/ is built in parallel.
+export type InstrumentId = 'piano' | 'guitar' | 'bass' | 'drums'
+
 // Transport + practice state shared between the playback engine and the UI.
 // Same philosophy as SundayLicks: `currentBeat` is the ONE time source — the
 // falling-notes canvas, the keyboard highlight and the section indicator are all
@@ -30,6 +35,18 @@ export interface PlayerData {
   lookaheadBeats: number
   metronome: boolean // click on every beat during playback
   countIn: boolean // one bar of clicks before playback starts
+
+  // ── Skolen v2 — multi-instrument fields (additive) ──────────────────────────
+  /** Which instrument the current session plays (drives sampler + band mix). */
+  instrument: InstrumentId
+  /** Band-modus: play the song as an ensemble rather than a single instrument. */
+  bandMode: boolean
+  /** Per-instrument gain 0–1 in band-modus (absent = default level). */
+  bandMix: Partial<Record<InstrumentId, number>>
+  /** Selected strum/rytme pattern id for gitar (null = none). */
+  strumPattern: string | null
+  /** Capo fret for gitar (0 = open). */
+  capo: number
 }
 
 interface PlayerState extends PlayerData {
@@ -45,6 +62,12 @@ interface PlayerState extends PlayerData {
   setLookaheadBeats: (lookaheadBeats: number) => void
   toggleMetronome: () => void
   toggleCountIn: () => void
+  // Skolen v2 setters.
+  setInstrument: (instrument: InstrumentId) => void
+  setBandMode: (bandMode: boolean) => void
+  setBandMix: (bandMix: Partial<Record<InstrumentId, number>>) => void
+  setStrumPattern: (strumPattern: string | null) => void
+  setCapo: (capo: number) => void
 }
 
 export const usePlayer = create<PlayerState>((set) => ({
@@ -60,6 +83,11 @@ export const usePlayer = create<PlayerState>((set) => ({
   lookaheadBeats: 4,
   metronome: false,
   countIn: false,
+  instrument: 'piano',
+  bandMode: false,
+  bandMix: {},
+  strumPattern: null,
+  capo: 0,
   set: (patch) => set(patch),
   setBpm: (bpm) => set({ bpm }),
   setTargetKey: (targetKey) => set({ targetKey }),
@@ -70,4 +98,9 @@ export const usePlayer = create<PlayerState>((set) => ({
   setLookaheadBeats: (lookaheadBeats) => set({ lookaheadBeats }),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
   toggleCountIn: () => set((s) => ({ countIn: !s.countIn })),
+  setInstrument: (instrument) => set({ instrument }),
+  setBandMode: (bandMode) => set({ bandMode }),
+  setBandMix: (bandMix) => set({ bandMix }),
+  setStrumPattern: (strumPattern) => set({ strumPattern }),
+  setCapo: (capo) => set({ capo }),
 }))

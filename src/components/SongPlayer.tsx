@@ -17,12 +17,14 @@ import { voicingOverlay } from '@/lib/voicing-hints'
 import type { Feedback } from '@/lib/useWaitMode'
 import { KEY_NAMES } from '@/lib/music'
 import { cn } from '@/lib/cn'
+import { bandTracks, applyBandMix } from '@/lib/band'
 import { FallingNotes } from './FallingNotes'
 import { FallingChords } from './FallingChords'
 import { Keyboard } from './Keyboard'
 import { ChordStrip } from './ChordStrip'
 import { SectionNav } from './SectionNav'
 import { TransportBar } from './TransportBar'
+import { BandPanel } from './BandPanel'
 import { NotationSong as NotationSongLazy } from './NotationSongLazy'
 import { keyboardLayout, padToC } from '@/lib/keyboard-geometry'
 
@@ -58,6 +60,7 @@ export function SongPlayer({ song }: Props) {
   const waitMode = usePlayer((s) => s.waitMode)
   const metronome = usePlayer((s) => s.metronome)
   const countIn = usePlayer((s) => s.countIn)
+  const bandMode = usePlayer((s) => s.bandMode)
 
   const [midi, setMidi] = useState<MidiConnection | null>(null)
   const [midiError, setMidiError] = useState<string | null>(null)
@@ -80,6 +83,10 @@ export function SongPlayer({ song }: Props) {
   bpmRef.current = bpm
   const loopRef = useRef(loop)
   loopRef.current = loop
+
+  // Subject-prefixed progress key (Skolen v2 — all keys are `{fag}:{slug}`).
+  // Piano is the only instrument that mounts SongPlayer today.
+  const progressKey = `piano:${song.slug}`
 
   // Active section under the play-head (for progress + wait-mode range default).
   const activeSection = useMemo(() => sectionOf(doc, currentBeat), [doc, currentBeat])
@@ -104,22 +111,26 @@ export function SongPlayer({ song }: Props) {
     return () => getEngine().dispose()
   }, [])
 
-  // (Re)build the Tone part when the notes change (doc = key, or hand). Tempo and
+  // (Re)build the Tone part when the notes change (doc = key, hand, or band). In
+  // band-modus the learner plays piano themselves, so the piano main track is
+  // emptied and the app plays bass+drums (bandTracks excludes piano). Tempo and
   // loop change live and do NOT rebuild.
   useEffect(() => {
     const engine = getEngine()
     const wasPlaying = usePlayer.getState().isPlaying
     if (wasPlaying) engine.stop()
-    engine.build(doc, {
+    engine.build(bandMode ? { ...doc, notes: [] } : doc, {
       hand,
       bpm: bpmRef.current,
       loop: loopRef.current !== null,
       transpose: 0, // doc is already transposed
+      extraTracks: bandMode ? bandTracks(doc, { exclude: 'piano', bpm: song.default_bpm }) : undefined,
     })
+    if (bandMode) applyBandMix(engine, usePlayer.getState().bandMix)
     const lp = loopRef.current
     engine.setLoopRange(lp ? lp[0] : null, lp ? lp[1] : null)
     if (wasPlaying) void engine.play()
-  }, [doc, hand])
+  }, [doc, hand, bandMode, song.default_bpm])
 
   // Keep the engine's loop range in sync with the UI (live, no rebuild).
   useEffect(() => {
@@ -134,8 +145,8 @@ export function SongPlayer({ song }: Props) {
     ? [activeSection.startBeat, activeSection.endBeat]
     : loop
   const onWaitLoop = useCallback(
-    () => recordPractice(song.slug, bpmRef.current, activeSection?.id),
-    [song.slug, activeSection],
+    () => recordPractice(progressKey, bpmRef.current, activeSection?.id),
+    [progressKey, activeSection],
   )
   const wait = useWaitMode(doc.notes, { range: waitRange, hand, onLoopComplete: onWaitLoop })
   const inputRef = useRef(wait.input)
@@ -185,10 +196,10 @@ export function SongPlayer({ song }: Props) {
       return
     }
     if (currentBeat < prevBeatRef.current - 0.5) {
-      recordPractice(song.slug, bpmRef.current)
+      recordPractice(progressKey, bpmRef.current)
     }
     prevBeatRef.current = currentBeat
-  }, [currentBeat, isPlaying, song.slug])
+  }, [currentBeat, isPlaying, progressKey])
 
   // MIDI cleanup on unmount / reconnect.
   useEffect(() => () => midi?.dispose(), [midi])
@@ -197,7 +208,7 @@ export function SongPlayer({ song }: Props) {
     const engine = getEngine()
     if (usePlayer.getState().isPlaying) {
       engine.stop()
-      recordPractice(song.slug, usePlayer.getState().bpm, usePlayer.getState().activeSectionId ?? undefined)
+      recordPractice(progressKey, usePlayer.getState().bpm, usePlayer.getState().activeSectionId ?? undefined)
     } else {
       if (usePlayer.getState().waitMode) usePlayer.getState().setWaitMode(false)
       void engine.play()
@@ -444,6 +455,8 @@ export function SongPlayer({ song }: Props) {
           onLoopToggle={onLoopToggle}
         />
       )}
+
+      {!chordMode && <BandPanel own="piano" />}
 
       {chordMode && (
         <p className="text-sm text-[var(--color-muted)]">

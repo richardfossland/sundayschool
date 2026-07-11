@@ -1,83 +1,110 @@
 import Link from 'next/link'
-import { ArrowDownWideNarrow, SlidersHorizontal, ShieldCheck, ArrowRight } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
+import { SubjectCard } from '@/components/SubjectCard'
+import { ContinueLearning } from '@/components/ContinueLearning'
+import { ChurchSeasonHint, type SeasonHintData } from '@/components/ChurchSeasonHint'
+import { SUBJECTS } from '@/lib/subjects'
+import { FALLBACK_META } from '@/lib/songs'
+import { ALL_PATTERNS } from '@/data/grooves'
+import { seasonsInOrder, seasonColorParts } from '@/lib/teologi/content'
 
-const FEATURES = [
-  {
-    icon: ArrowDownWideNarrow,
-    title: 'Fallende noter og vent-modus',
-    body:
-      'Notene faller mot tangentene i takt med musikken. Slå på vent-modus, så holder øvingen pusten til du treffer riktig tangent — helt uten stress.',
-  },
-  {
-    icon: SlidersHorizontal,
-    title: 'Transponér til din toneart',
-    body:
-      'Flytt hele satsen til forsangerens toneart med ett trykk. Ekte notasjon og besifring følger med — ingen tidsstrekking, ingen kunstig lyd.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Fritt og lovlig repertoar',
-    body:
-      'Salmer, hymner, spirituals og gospel med dokumenterte rettigheter — alle opphavere døde i god tid før 1956. Trygt å bruke i menigheten.',
-  },
-]
+// ── Skolen — the school front page ────────────────────────────────────────────
+// The rich front door to SundaySchool (Skolen v2, wave 2). A server component
+// that assembles everything and hands lightweight, serialisable data to the two
+// client sections — "Fortsett der du slapp" (reads localStorage) and the
+// kirkeårs-hint (date-dependent). All seven subjects are live; the heavy song
+// docs and full teologi data stay on the server — only strings cross to the
+// client bundle.
+
+// slug → title / id → label maps, built server-side so the client "Fortsett"
+// section can name songs and grooves without importing their heavy data.
+const songTitles: Record<string, string> = Object.fromEntries(
+  FALLBACK_META.map((m) => [m.slug, m.title]),
+)
+const grooveTitles: Record<string, string> = Object.fromEntries(
+  ALL_PATTERNS.map((g) => [g.id, g.label]),
+)
+
+// The church-year seasons, reduced to what the hint banner needs (colour parsed,
+// song titles resolved) so ChurchSeasonHint never pulls in the teologi data.
+const seasonHints: SeasonHintData[] = seasonsInOrder().map((s) => {
+  const { name, hex } = seasonColorParts(s.color)
+  return {
+    id: s.id,
+    label: s.label,
+    colorName: name,
+    hex,
+    songs: s.songSlugs.map((slug) => ({ slug, title: songTitles[slug] ?? slug })),
+  }
+})
 
 export default function Home() {
+  const primary = SUBJECTS.filter((s) => s.tier === 'primary')
+  const secondary = SUBJECTS.filter((s) => s.tier === 'secondary')
+
   return (
     <AppShell>
-      <main>
+      <main className="pb-24">
         {/* Hero */}
-        <section className="mx-auto max-w-3xl px-4 pb-16 pt-20 text-center sm:pt-28">
+        <section className="mx-auto max-w-3xl px-4 pb-10 pt-16 text-center sm:pt-24">
           <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-1.5 text-xs font-medium uppercase tracking-wider text-[var(--color-muted)]">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[var(--color-amber)]" />
             Del av Sunday Suite
           </p>
           <h1 className="font-display text-4xl leading-tight text-[var(--color-ivory)] sm:text-6xl">
-            Lær salmer på piano med{' '}
-            <span className="text-[var(--color-amber)]">fallende noter</span>
+            Sunday<span className="text-[var(--color-amber)]">School</span>
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-[var(--color-muted)]">
-            Lær salmer, lovsang og gospel på piano — fallende noter, ekte notasjon
-            og transponering til din toneart.
+            Musikkskolen og søndagsskolen for menigheten — lær piano, gitar, bass og trommer, og gå
+            dypere i troen.
           </p>
-          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/bibliotek"
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--color-amber)] px-7 py-3.5 text-base font-semibold text-[var(--color-ink-on-amber)] transition-transform hover:scale-[1.02]"
-            >
-              Åpne biblioteket
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/om-rettigheter"
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-7 py-3.5 text-base font-medium text-[var(--color-ivory)] transition-colors hover:bg-[var(--color-surface)]"
-            >
-              Om rettigheter
-            </Link>
-          </div>
         </section>
 
-        {/* Features */}
-        <section className="mx-auto max-w-5xl px-4 pb-24">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {FEATURES.map(({ icon: Icon, title, body }) => (
-              <article
-                key={title}
-                className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6"
-              >
-                <span
-                  aria-hidden
-                  className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-[var(--color-amber)]/12 text-[var(--color-amber)]"
-                >
-                  <Icon className="h-5 w-5" />
-                </span>
-                <h2 className="font-display text-xl text-[var(--color-ivory)]">{title}</h2>
-                <p className="mt-2.5 text-sm leading-relaxed text-[var(--color-muted)]">{body}</p>
-              </article>
+        {/* Fortsett der du slapp — hidden when there's no history */}
+        <ContinueLearning songTitles={songTitles} grooveTitles={grooveTitles} />
+
+        {/* Primary subjects */}
+        <section className="mx-auto max-w-5xl px-4 pt-6">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {primary.map((s) => (
+              <SubjectCard key={s.id} subject={s} size="lg" />
             ))}
           </div>
         </section>
+
+        {/* Secondary subjects */}
+        <section className="mx-auto max-w-5xl px-4 pt-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {secondary.map((s) => (
+              <SubjectCard key={s.id} subject={s} size="sm" />
+            ))}
+          </div>
+        </section>
+
+        {/* Kirkeårs-hint */}
+        <div className="pt-6">
+          <ChurchSeasonHint seasons={seasonHints} />
+        </div>
+
+        {/* Suite badge + footer */}
+        <footer className="mx-auto mt-16 max-w-5xl border-t border-[var(--color-border)] px-4 pt-8 text-center">
+          <p className="inline-flex items-center gap-2 text-sm text-[var(--color-muted)]">
+            <span aria-hidden className="grid h-5 w-5 place-items-center rounded-full bg-[var(--color-amber)]/15 text-[var(--color-amber)]">
+              ♪
+            </span>
+            SundaySchool er en del av{' '}
+            <span className="font-medium text-[var(--color-ivory)]">Sunday Suite</span>
+          </p>
+          <p className="mt-3 text-sm text-[var(--color-muted)]">
+            Fritt og lovlig repertoar.{' '}
+            <Link
+              href="/om-rettigheter"
+              className="text-[var(--color-amber)] underline-offset-2 hover:underline"
+            >
+              Om rettigheter
+            </Link>
+          </p>
+        </footer>
       </main>
     </AppShell>
   )
