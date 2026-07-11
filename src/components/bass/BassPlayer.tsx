@@ -12,12 +12,14 @@ import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useWaitMode } from '@/lib/useWaitMode'
 import { generateBassline, type BassLevel } from '@/lib/bass/bassline'
+import { bandTracks, applyBandMix } from '@/lib/band'
 import { BASS_EADG, bestPosition, type FretPosition } from '@/lib/fretboard-geometry'
 import type { FretLaneNote } from '@/lib/fretboard-renderer'
 import { noteName } from '@/lib/music'
 import { ChordStrip } from '../ChordStrip'
 import { SectionNav } from '../SectionNav'
 import { TransportBar } from '../TransportBar'
+import { BandPanel } from '../BandPanel'
 import { FallingFretboard } from './FallingFretboard'
 import { Fretboard } from './Fretboard'
 import { LevelPicker } from './LevelPicker'
@@ -48,6 +50,7 @@ export function BassPlayer({ song }: Props) {
   const waitMode = usePlayer((s) => s.waitMode)
   const metronome = usePlayer((s) => s.metronome)
   const countIn = usePlayer((s) => s.countIn)
+  const bandMode = usePlayer((s) => s.bandMode)
 
   const [midi, setMidi] = useState<MidiConnection | null>(null)
   const [midiError, setMidiError] = useState<string | null>(null)
@@ -110,8 +113,11 @@ export function BassPlayer({ song }: Props) {
     return () => getEngine().dispose()
   }, [])
 
-  // (Re)build when the generated line changes (key or level). The piano main
-  // track gets an empty doc and is muted; only the bass extra track sounds.
+  // (Re)build when the generated line changes (key, level, or band). Solo mode:
+  // the piano main track is empty and muted, and only the generated bass extra
+  // track sounds (the reference line). Band-modus: the learner plays the bass, so
+  // the app plays piano+drums instead (bandTracks excludes bass) and piano is
+  // unmuted — the generated bassline stays on the fretboard as the visual target.
   useEffect(() => {
     const engine = getEngine()
     const wasPlaying = usePlayer.getState().isPlaying
@@ -123,14 +129,17 @@ export function BassPlayer({ song }: Props) {
         bpm: bpmRef.current,
         loop: loopRef.current !== null,
         transpose: 0, // doc is already transposed
-        extraTracks: [{ instrument: 'bass', events: bassline }],
+        extraTracks: bandMode
+          ? bandTracks(doc, { exclude: 'bass', bpm: song.default_bpm })
+          : [{ instrument: 'bass', events: bassline }],
       },
     )
-    engine.muteTrack('piano', true) // silence wait-mode's internal piano notes
+    engine.muteTrack('piano', !bandMode) // solo: silence internal piano; band: piano plays
+    if (bandMode) applyBandMix(engine, usePlayer.getState().bandMix)
     const lp = loopRef.current
     engine.setLoopRange(lp ? lp[0] : null, lp ? lp[1] : null)
     if (wasPlaying) void engine.play()
-  }, [doc, bassline])
+  }, [doc, bassline, bandMode, song.default_bpm])
 
   // Keep the engine's loop range in sync with the UI (live, no rebuild).
   useEffect(() => {
@@ -326,6 +335,8 @@ export function BassPlayer({ song }: Props) {
         loop={loop !== null}
         onLoopToggle={onLoopToggle}
       />
+
+      <BandPanel own="bass" />
 
       {waitMode && (
         <p className="text-sm text-[var(--color-muted)]">

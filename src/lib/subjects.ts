@@ -12,9 +12,8 @@ import {
 // ── Fag-register (Skolen v2) ──────────────────────────────────────────────────
 // The single source of truth for the "school" of subjects. The launcher
 // (app/page.tsx), the topbar nav (AppShell) and each fag-skeleton all read from
-// here so a new subject is added in exactly one place. Piano is the only live
-// subject in wave 0; the rest render a "kommer"-skeleton until later waves fill
-// them in. Accent colours are the --fag-* CSS vars defined in globals.css.
+// here so a new subject is added in exactly one place. All seven subjects went
+// live in wave 1. Accent colours are the --fag-* CSS vars defined in globals.css.
 
 export type SubjectId =
   | 'piano'
@@ -37,6 +36,8 @@ export interface Subject {
   tier: 'primary' | 'secondary'
   /** One-line description for the launcher card. */
   tagline: string
+  /** A short "hva du lærer"-line for the large launcher cards. */
+  learn: string
 }
 
 export const SUBJECTS: Subject[] = [
@@ -49,6 +50,7 @@ export const SUBJECTS: Subject[] = [
     status: 'active',
     tier: 'primary',
     tagline: 'Fallende noter, notasjon og transponering',
+    learn: 'Spill salmer og lovsang med vent-modus og fire vanskelighetsnivåer',
   },
   {
     id: 'gitar',
@@ -59,6 +61,7 @@ export const SUBJECTS: Subject[] = [
     status: 'active',
     tier: 'primary',
     tagline: 'Grep, besifring og rytme',
+    learn: 'Grep-diagrammer, capo og strumming over hele repertoaret',
   },
   {
     id: 'bass',
@@ -69,6 +72,7 @@ export const SUBJECTS: Subject[] = [
     status: 'active',
     tier: 'primary',
     tagline: 'Grunntoner og gangbass',
+    learn: 'Rot, kvint og vandrende gangbass generert fra besifringen',
   },
   {
     id: 'trommer',
@@ -79,6 +83,7 @@ export const SUBJECTS: Subject[] = [
     status: 'active',
     tier: 'primary',
     tagline: 'Grooves og komp',
+    learn: 'Øv grooves og fills, eller komp til en sang med generert trommespor',
   },
   {
     id: 'teologi',
@@ -89,6 +94,7 @@ export const SUBJECTS: Subject[] = [
     status: 'active',
     tier: 'primary',
     tagline: 'Bibel, troslære og liturgi',
+    learn: 'Salmehistorier, bibelvers, katekismen og kirkeårets rytme',
   },
   {
     id: 'teori',
@@ -99,6 +105,7 @@ export const SUBJECTS: Subject[] = [
     status: 'active',
     tier: 'secondary',
     tagline: 'Skalaer, akkorder og harmoni',
+    learn: 'Intervaller, akkorder, kvintsirkelen og tonearter',
   },
   {
     id: 'gehor',
@@ -109,6 +116,7 @@ export const SUBJECTS: Subject[] = [
     status: 'active',
     tier: 'secondary',
     tagline: 'Intervaller og gehørtrening',
+    learn: 'Hør intervaller, akkordkvalitet og melodidiktat i korte økter',
   },
 ]
 

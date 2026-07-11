@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
+import { CrossLinks } from '@/components/CrossLinks'
 import { hymnStories, memoryVerses } from '@/lib/teologi/content'
 import { dueVerses, loadSr, todayKey } from '@/lib/teologi/sr'
 
@@ -171,6 +172,14 @@ export default function TeologiPage() {
               ))}
           </ul>
         </section>
+
+        <CrossLinks
+          title="Øv sangene"
+          links={[
+            { href: '/piano', label: 'Til sangbiblioteket på piano' },
+            { href: '/teologi/kirkearet', label: 'Se kirkeåret' },
+          ]}
+        />
       </main>
     </AppShell>
   )

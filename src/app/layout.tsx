@@ -6,9 +6,9 @@ const hanken = Hanken_Grotesk({ subsets: ['latin'], variable: '--font-hanken' })
 const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair' })
 
 export const metadata: Metadata = {
-  title: 'SundaySchool — lær salmer, lovsang og gospel på piano',
+  title: 'SundaySchool — musikkskolen og søndagsskolen for menigheten',
   description:
-    'Interaktiv piano-læring med fallende noter, ekte notasjon, vent-modus og transponering. Salmer, hymner, gospel og spirituals — fritt og lovlig repertoar.',
+    'Lær piano, gitar, bass og trommer med fallende noter, ekte notasjon, vent-modus og transponering — og gå dypere i troen med teologi, teori og gehørtrening. Salmer, hymner, gospel og spirituals; fritt og lovlig repertoar.',
 }
 
 export const viewport: Viewport = {

@@ -13,9 +13,11 @@ import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useChordMode } from '@/lib/useChordMode'
 import { shapesAtCapo } from '@/lib/guitar/capo'
 import { defaultPatternFor, patternById, strumEvents } from '@/lib/guitar/strumming'
+import { bandTracks, applyBandMix } from '@/lib/band'
 import { FallingChords } from '@/components/FallingChords'
 import { ChordStrip } from '@/components/ChordStrip'
 import { SectionNav } from '@/components/SectionNav'
+import { BandPanel } from '@/components/BandPanel'
 import { ChordDiagram } from './ChordDiagram'
 import { ChordSheet } from './ChordSheet'
 import { CapoHelper } from './CapoHelper'
@@ -50,6 +52,7 @@ export function GuitarPlayer({ song }: Props) {
   const countIn = usePlayer((s) => s.countIn)
   const capo = usePlayer((s) => s.capo)
   const strumPatternId = usePlayer((s) => s.strumPattern)
+  const bandMode = usePlayer((s) => s.bandMode)
 
   const [view, setView] = useState<View>('fallende')
   const [practice, setPractice] = useState(false) // grep-øving (chord practice)
@@ -116,9 +119,11 @@ export function GuitarPlayer({ song }: Props) {
     return () => getEngine().dispose()
   }, [])
 
-  // (Re)build when the sounding events change (key, capo or pattern). The main
-  // track is the doc with NO notes — timing/meter fields still drive the
-  // transport — and the strummed guitar is the only sounding extraTrack.
+  // (Re)build when the sounding events change (key, capo, pattern, or band). The
+  // main track is always the doc with NO notes (timing/meter fields still drive
+  // the transport). Solo mode: the strummed guitar is the only sounding track.
+  // Band-modus: the learner strums, so the app plays piano+bass+drums instead
+  // (bandTracks excludes guitar) and the guitar track drops out.
   useEffect(() => {
     const engine = getEngine()
     const wasPlaying = usePlayer.getState().isPlaying
@@ -130,13 +135,16 @@ export function GuitarPlayer({ song }: Props) {
         bpm: bpmRef.current,
         loop: loopRef.current !== null,
         transpose: 0,
-        extraTracks: [{ instrument: 'guitar', events: guitarEvents, volumeDb: 0 }],
+        extraTracks: bandMode
+          ? bandTracks(doc, { exclude: 'guitar', bpm: song.default_bpm })
+          : [{ instrument: 'guitar', events: guitarEvents, volumeDb: 0 }],
       },
     )
+    if (bandMode) applyBandMix(engine, usePlayer.getState().bandMix)
     const lp = loopRef.current
     engine.setLoopRange(lp ? lp[0] : null, lp ? lp[1] : null)
     if (wasPlaying) void engine.play()
-  }, [doc, guitarEvents])
+  }, [doc, guitarEvents, bandMode, song.default_bpm])
 
   // Keep the engine's loop range in sync with the UI (live, no rebuild).
   useEffect(() => {
@@ -449,6 +457,7 @@ export function GuitarPlayer({ song }: Props) {
             loop={loop !== null}
             onLoopToggle={onLoopToggle}
           />
+          <BandPanel own="guitar" />
         </>
       )}
     </div>

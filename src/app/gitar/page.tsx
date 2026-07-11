@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Guitar, ArrowLeft } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
 import { SongLibraryList } from '@/components/SongLibraryList'
+import { CrossLinks } from '@/components/CrossLinks'
 import { SUBJECT_BY_ID } from '@/lib/subjects'
 
 // ── Gitar — fag-forside ───────────────────────────────────────────────────────
@@ -51,6 +52,13 @@ export default function GitarPage() {
         </header>
 
         <SongLibraryList hrefBase="/gitar/sang" />
+
+        <CrossLinks
+          links={[
+            { href: '/teori', label: 'Lær teorien bak' },
+            { href: '/gehor', label: 'Tren gehøret' },
+          ]}
+        />
       </main>
     </AppShell>
   )

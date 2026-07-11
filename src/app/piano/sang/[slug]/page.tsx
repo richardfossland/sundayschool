@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react'
 import type { Song } from '@/types/song'
 import { fetchSong } from '@/lib/songs'
 import { SongPlayerLazy } from '@/components/SongPlayerLazy'
+import { HymnStoryLink } from '@/components/HymnStoryLink'
 import { AppShell } from '@/components/AppShell'
 
 // Client-side load (same pattern as SundayLicks' lick page): the song is fetched
@@ -71,6 +72,8 @@ export default function SangPage() {
             </div>
 
             <SongPlayerLazy song={state.song} />
+
+            <HymnStoryLink slug={state.song.slug} />
 
             <p className="mt-6 text-xs leading-relaxed text-[var(--color-muted)]">
               Fritt repertoar — alle opphavere døde før 1956.{' '}

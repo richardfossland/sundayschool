@@ -11,7 +11,7 @@ import { cn } from '@/lib/cn'
 // --fag-* CSS var, applied inline so the colour is fully data-driven.
 
 export function SubjectCard({ subject, size = 'lg' }: { subject: Subject; size?: 'lg' | 'sm' }) {
-  const { icon: Icon, label, tagline, href, accent, status } = subject
+  const { icon: Icon, label, tagline, learn, href, accent, status } = subject
   const active = status === 'active'
 
   return (
@@ -61,6 +61,15 @@ export function SubjectCard({ subject, size = 'lg' }: { subject: Subject; size?:
       <p className={cn('mt-1.5 text-[var(--color-muted)]', size === 'lg' ? 'text-sm' : 'text-sm')}>
         {tagline}
       </p>
+
+      {size === 'lg' && (
+        <p className="mt-3 flex items-start gap-2 border-t border-[var(--color-border)] pt-3 text-xs leading-relaxed text-[var(--color-muted)]">
+          <span aria-hidden style={{ color: accent }}>
+            ✦
+          </span>
+          {learn}
+        </p>
+      )}
 
       {active && (
         <span

@@ -3,6 +3,7 @@ import { Drum } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
 import { SongLibraryList } from '@/components/SongLibraryList'
 import { GrooveLibraryList } from '@/components/drums/GrooveLibraryList'
+import { CrossLinks } from '@/components/CrossLinks'
 
 // ── Trommer — fag-forside ─────────────────────────────────────────────────────
 // The drums subject's home: the groove/fill library on top (practice patterns),
@@ -58,6 +59,13 @@ export default function TrommerPage() {
           </p>
           <SongLibraryList hrefBase="/trommer/sang" />
         </section>
+
+        <CrossLinks
+          links={[
+            { href: '/teori', label: 'Lær teorien bak' },
+            { href: '/gehor', label: 'Tren gehøret' },
+          ]}
+        />
       </main>
     </AppShell>
   )

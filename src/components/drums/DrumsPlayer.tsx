@@ -7,11 +7,13 @@ import { usePlayer } from '@/lib/store'
 import { getEngine } from '@/lib/engine'
 import { installAudioUnlock } from '@/lib/audio-unlock'
 import { generateDrumTrack, hitsToEngineEvents } from '@/lib/drums/drum-track'
+import { bandTracks, applyBandMix } from '@/lib/band'
 import { LANES, laneOf } from '@/lib/drums/drum-lanes'
 import { useDrumTrainer } from '@/lib/drums/use-drum-trainer'
 import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { SectionNav } from '../SectionNav'
+import { BandPanel } from '../BandPanel'
 import { DrumLanes } from './DrumLanes'
 import { ScreenPads } from './ScreenPads'
 import { TimingSummary } from './TimingSummary'
@@ -38,6 +40,7 @@ export function DrumsPlayer({ song }: Props) {
   const loop = usePlayer((s) => s.loop)
   const metronome = usePlayer((s) => s.metronome)
   const countIn = usePlayer((s) => s.countIn)
+  const bandMode = usePlayer((s) => s.bandMode)
 
   const [midi, setMidi] = useState<MidiConnection | null>(null)
   const [midiError, setMidiError] = useState<string | null>(null)
@@ -79,23 +82,29 @@ export function DrumsPlayer({ song }: Props) {
     return () => getEngine().dispose()
   }, [])
 
-  // Build piano (the band) + the generated drum track. The drum level sits a
-  // touch under the piano so the learner's own strikes stay audible on top.
+  // Solo mode: the piano main track plays the song (the "band") while the
+  // generated drum track falls down the lanes for the learner to match, sitting
+  // a touch under the piano. Band-modus: the learner IS the drummer, so the app
+  // plays piano+bass instead (bandTracks excludes drums) with an empty main
+  // track — the generated drum hits stay on the lanes as the visual target.
   useEffect(() => {
     const engine = getEngine()
     const wasPlaying = usePlayer.getState().isPlaying
     if (wasPlaying) engine.stop()
-    engine.build(doc, {
+    engine.build(bandMode ? { ...doc, notes: [] } : doc, {
       hand: 'both',
       bpm: bpmRef.current,
       loop: loopRef.current !== null,
       transpose: 0, // drums are identity; piano plays the original key
-      extraTracks: [{ instrument: 'drums', events: hitsToEngineEvents(drumHits), volumeDb: -3 }],
+      extraTracks: bandMode
+        ? bandTracks(doc, { exclude: 'drums', bpm: song.default_bpm })
+        : [{ instrument: 'drums', events: hitsToEngineEvents(drumHits), volumeDb: -3 }],
     })
+    if (bandMode) applyBandMix(engine, usePlayer.getState().bandMix)
     const lp = loopRef.current
     engine.setLoopRange(lp ? lp[0] : null, lp ? lp[1] : null)
     if (wasPlaying) void engine.play()
-  }, [doc, drumHits])
+  }, [doc, drumHits, bandMode, song.default_bpm])
 
   // Keep the engine's loop range in sync with the UI (live, no rebuild).
   useEffect(() => {
@@ -213,9 +222,12 @@ export function DrumsPlayer({ song }: Props) {
         onCountInToggle={() => usePlayer.getState().toggleCountIn()}
       />
 
+      <BandPanel own="drums" />
+
       <p className="text-sm text-[var(--color-muted)]">
-        Pianoet spiller sangen mens trommesporet faller nedover — komp med og treff markørene på
-        linja. Trommene tier i opptakten og fyller inn før hvert delskifte.
+        {bandMode
+          ? 'Band-modus: du er trommeslageren — piano og bass komper mens du spiller trommesporet som faller nedover.'
+          : 'Pianoet spiller sangen mens trommesporet faller nedover — komp med og treff markørene på linja. Trommene tier i opptakten og fyller inn før hvert delskifte.'}
       </p>
     </div>
   )

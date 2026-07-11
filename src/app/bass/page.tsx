@@ -1,6 +1,7 @@
 import { Music2 } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
 import { SongLibraryList } from '@/components/SongLibraryList'
+import { CrossLinks } from '@/components/CrossLinks'
 
 // ── Bass — fag-forside ────────────────────────────────────────────────────────
 // The bass subject's home: a fag-header over the shared song library. Cards
@@ -37,6 +38,13 @@ export default function BassPage() {
         </header>
 
         <SongLibraryList hrefBase="/bass/sang" />
+
+        <CrossLinks
+          links={[
+            { href: '/teori', label: 'Lær teorien bak' },
+            { href: '/gehor', label: 'Tren gehøret' },
+          ]}
+        />
       </main>
     </AppShell>
   )

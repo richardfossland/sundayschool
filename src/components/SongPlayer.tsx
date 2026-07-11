@@ -17,12 +17,14 @@ import { voicingOverlay } from '@/lib/voicing-hints'
 import type { Feedback } from '@/lib/useWaitMode'
 import { KEY_NAMES } from '@/lib/music'
 import { cn } from '@/lib/cn'
+import { bandTracks, applyBandMix } from '@/lib/band'
 import { FallingNotes } from './FallingNotes'
 import { FallingChords } from './FallingChords'
 import { Keyboard } from './Keyboard'
 import { ChordStrip } from './ChordStrip'
 import { SectionNav } from './SectionNav'
 import { TransportBar } from './TransportBar'
+import { BandPanel } from './BandPanel'
 import { NotationSong as NotationSongLazy } from './NotationSongLazy'
 import { keyboardLayout, padToC } from '@/lib/keyboard-geometry'
 
@@ -58,6 +60,7 @@ export function SongPlayer({ song }: Props) {
   const waitMode = usePlayer((s) => s.waitMode)
   const metronome = usePlayer((s) => s.metronome)
   const countIn = usePlayer((s) => s.countIn)
+  const bandMode = usePlayer((s) => s.bandMode)
 
   const [midi, setMidi] = useState<MidiConnection | null>(null)
   const [midiError, setMidiError] = useState<string | null>(null)
@@ -108,22 +111,26 @@ export function SongPlayer({ song }: Props) {
     return () => getEngine().dispose()
   }, [])
 
-  // (Re)build the Tone part when the notes change (doc = key, or hand). Tempo and
+  // (Re)build the Tone part when the notes change (doc = key, hand, or band). In
+  // band-modus the learner plays piano themselves, so the piano main track is
+  // emptied and the app plays bass+drums (bandTracks excludes piano). Tempo and
   // loop change live and do NOT rebuild.
   useEffect(() => {
     const engine = getEngine()
     const wasPlaying = usePlayer.getState().isPlaying
     if (wasPlaying) engine.stop()
-    engine.build(doc, {
+    engine.build(bandMode ? { ...doc, notes: [] } : doc, {
       hand,
       bpm: bpmRef.current,
       loop: loopRef.current !== null,
       transpose: 0, // doc is already transposed
+      extraTracks: bandMode ? bandTracks(doc, { exclude: 'piano', bpm: song.default_bpm }) : undefined,
     })
+    if (bandMode) applyBandMix(engine, usePlayer.getState().bandMix)
     const lp = loopRef.current
     engine.setLoopRange(lp ? lp[0] : null, lp ? lp[1] : null)
     if (wasPlaying) void engine.play()
-  }, [doc, hand])
+  }, [doc, hand, bandMode, song.default_bpm])
 
   // Keep the engine's loop range in sync with the UI (live, no rebuild).
   useEffect(() => {
@@ -448,6 +455,8 @@ export function SongPlayer({ song }: Props) {
           onLoopToggle={onLoopToggle}
         />
       )}
+
+      {!chordMode && <BandPanel own="piano" />}
 
       {chordMode && (
         <p className="text-sm text-[var(--color-muted)]">
