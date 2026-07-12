@@ -34,6 +34,10 @@
   --fag-teologi:  #C9A34E; /* antique parchment gold */
   --fag-teori:    #5FA9A6; /* muted teal — analytic, sea sibling */
   --fag-gehor:    #9E93C4; /* soft violet — listening */
+  --fag-lovsang:  #C46A8E; /* warm rose — the singer up front */
+  --fag-bladspill:#6E96B8; /* dusty blue — ink on paper */
+  --fag-rytme:    #8FA55B; /* olive green — pulse & groove */
+  --fag-lydteknikk:#7A8699; /* slate steel — the mixing desk */
 }
 
 @theme inline {
