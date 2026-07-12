@@ -14,7 +14,9 @@
 
 import type { SongChord } from '@/types/song'
 import type { ChordLevel } from './chord-match'
-import { nearestOffset } from './transpose'
+// Eksplisitt .ts-endelse: fila er i seed-scriptets import-graf (Node
+// type-stripping krever fulle stier — samme krav som i src/data/songs/).
+import { nearestOffset } from './transpose.ts'
 
 interface Tones {
   third: number // semitone offset from root

@@ -89,6 +89,13 @@ export interface SongDoc {
 export interface Song {
   id: string
   slug: string
+  /** The underlying work this row is an arrangement of. Variants of the same
+   * work (enkel/firstemmig/gospel) share `work_slug`; the library groups on
+   * it. For a work's standard arrangement `work_slug === slug`. */
+  work_slug: string
+  /** Human variant name ('Enkel' | 'Firstemmig' | 'Gospel' …). Null when the
+   * row is the work's only/standard arrangement. Max 24 chars. */
+  variant_label: string | null
   title: string
   subtitle: string | null // e.g. original/English title
   tradition: Tradition

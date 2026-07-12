@@ -32,6 +32,8 @@ const left = song(...halves.map((p, i) => stack('L', i * 2, 2, p)))
 
 export const kirkenDenEr: SeedSong = {
   slug: 'kirken-den-er-et-gammelt-hus',
+  work_slug: 'kirken-den-er-et-gammelt-hus',
+  variant_label: null,
   title: 'Kirken den er et gammelt hus',
   subtitle: 'Lindeman / Grundtvig',
   tradition: 'salme',

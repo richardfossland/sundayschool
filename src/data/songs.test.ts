@@ -26,17 +26,31 @@ function melodyLine(notes: SongNote[]): SongNote[] {
 }
 
 describe('seed song library', () => {
-  it('has 10 songs with unique slugs', () => {
-    expect(seedSongs.length).toBe(10)
+  // 10 hand-written + generated arrangements from the work sources (pilot: 2
+  // works à 2/3 levels = 5). The library only grows from here.
+  it('has at least 14 songs with unique slugs', () => {
+    expect(seedSongs.length).toBeGreaterThanOrEqual(14)
     const slugs = new Set(seedSongs.map((s: SeedSong) => s.slug))
     expect(slugs.size).toBe(seedSongs.length)
   })
 
-  it('covers the intended difficulty split (8 × diff 1 + 2 × diff 2)', () => {
-    const d1 = seedSongs.filter((s: SeedSong) => s.difficulty === 1).length
-    const d2 = seedSongs.filter((s: SeedSong) => s.difficulty === 2).length
-    expect(d1).toBe(8)
-    expect(d2).toBe(2)
+  it('has at most one arrangement per (work, difficulty) and covers all difficulties', () => {
+    const combos = new Set(seedSongs.map((s: SeedSong) => `${s.work_slug}#${s.difficulty}`))
+    expect(combos.size).toBe(seedSongs.length)
+    const difficulties = new Set(seedSongs.map((s: SeedSong) => s.difficulty))
+    expect(difficulties).toEqual(new Set([1, 2, 3]))
+  })
+
+  it('gives every variant a consistent work identity', () => {
+    const bySlug = new Map(seedSongs.map((s: SeedSong) => [s.slug, s]))
+    for (const s of seedSongs) {
+      // A variant's work_slug points at the work's level-1 arrangement slug.
+      expect(bySlug.has(s.work_slug)).toBe(true)
+      if (s.slug !== s.work_slug) {
+        // Non-standard variants must be labelled.
+        expect(s.variant_label).not.toBeNull()
+      }
+    }
   })
 
   for (const song of seedSongs) {

@@ -9,8 +9,9 @@ import { LANE_COLORS } from './lane-colors'
 // The falling-drums canvas — the drum sibling of FallingNotes. A rAF loop reads
 // `currentBeat` straight from the store each frame (no React re-render per
 // frame) and calls the pure drawFallingDrums. Unlike the piano canvas the width
-// is RESPONSIVE (lanes stretch, no horizontal scroll), so it fills its container
-// and the ScreenPads row below shares the same 9-column split.
+// is RESPONSIVE (lanes stretch, no horizontal scroll), so it fills its
+// container. The ScreenPads kit below is laid out as a drum set (cymbals row +
+// drums row), not one column per lane, so it no longer mirrors this 9-lane split.
 
 interface Props {
   hits: DrumHit[]

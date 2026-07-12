@@ -2,6 +2,7 @@ import type { SongDoc } from '@/types/song'
 import type { EngineEvent } from '../engine-events'
 import type { DrumHit, Groove } from './types'
 import { GROOVES, FILLS } from '@/data/grooves'
+import { laneOf } from './drum-lanes'
 
 // ── Drum-track generator (pure) ───────────────────────────────────────────────
 // Turns a song's SongDoc into a full drum accompaniment by tiling a groove:
@@ -143,6 +144,18 @@ export function generateDrumTrack(doc: SongDoc, style?: string, bpm?: number): D
   }
 
   return hits.sort((a, b2) => a.t - b2.t || a.p - b2.p)
+}
+
+/** The set of lane indices a hit list touches (aliases folded in via laneOf).
+ * Unmapped pitches are ignored. Used to decide whether a groove fits the
+ * simplified 4-pad kit. */
+export function lanesUsed(hits: DrumHit[]): Set<number> {
+  const lanes = new Set<number>()
+  for (const h of hits) {
+    const lane = laneOf(h.p)
+    if (lane !== null) lanes.add(lane)
+  }
+  return lanes
 }
 
 /** Flatten drum hits into the engine's TrackInput event shape. Drums are

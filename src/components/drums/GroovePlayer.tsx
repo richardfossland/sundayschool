@@ -9,6 +9,7 @@ import { getEngine } from '@/lib/engine'
 import { installAudioUnlock } from '@/lib/audio-unlock'
 import { hitsToEngineEvents } from '@/lib/drums/drum-track'
 import { LANES, laneOf } from '@/lib/drums/drum-lanes'
+import { readSimplePads, writeSimplePads } from '@/lib/drums/simple-pads'
 import { useDrumTrainer } from '@/lib/drums/use-drum-trainer'
 import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
@@ -55,6 +56,17 @@ export function GroovePlayer({ groove }: Props) {
   const [midi, setMidi] = useState<MidiConnection | null>(null)
   const [midiError, setMidiError] = useState<string | null>(null)
 
+  // "Enkle pads": beginner 4-pad kit. Hydration-safe — read in an effect, never
+  // during render — and persisted so it carries across grooves and the library.
+  const [simplePads, setSimplePads] = useState(false)
+  useEffect(() => setSimplePads(readSimplePads()), [])
+  const toggleSimplePads = () =>
+    setSimplePads((on) => {
+      const next = !on
+      writeSimplePads(next)
+      return next
+    })
+
   const progressKey = `trommer:groove:${groove.id}`
   const bpmRef = useRef(bpm)
   bpmRef.current = bpm
@@ -96,10 +108,12 @@ export function GroovePlayer({ groove }: Props) {
     engine.setLoopRange(null, null)
   }, [groove])
 
-  // Strike helper shared by pads and MIDI: sound the drum + judge the timing.
-  const strikeLane = (laneIndex: number) => {
+  // Strike helper shared by pads and MIDI: sound the drum at the played velocity
+  // + judge the timing. Pads pass tap force / position; e-drums their real
+  // note-on velocity; the keyboard a flat 0.9 (all normalised 0–1 upstream).
+  const strikeLane = (laneIndex: number, velocity: number) => {
     const engine = getEngine()
-    void engine.playNote(LANES[laneIndex].padPitch, 0.9, 0.3, 'drums')
+    void engine.playNote(LANES[laneIndex].padPitch, velocity, 0.3, 'drums')
     return trainer.strike(laneIndex)
   }
   const strikeRef = useRef(strikeLane)
@@ -111,10 +125,11 @@ export function GroovePlayer({ groove }: Props) {
     setMidiError(null)
     try {
       const conn = await connectMidi({
-        // E-drum note-on: map the GM pitch (aliases included) to its lane.
-        onNoteOn: (pitch) => {
+        // E-drum note-on: map the GM pitch (aliases included) to its lane and
+        // pass the pad's own velocity through to the sound.
+        onNoteOn: (pitch, velocity) => {
           const lane = laneOf(pitch)
-          if (lane !== null) strikeRef.current(lane)
+          if (lane !== null) strikeRef.current(lane, velocity)
         },
         onNoteOff: () => {},
       })
@@ -163,10 +178,24 @@ export function GroovePlayer({ groove }: Props) {
       </div>
       {midiError && <p className="text-xs text-[var(--color-danger)]">{midiError}</p>}
 
-      {/* Falling lanes + pads share the container width so lanes align with pads. */}
+      {/* Falling lanes above the drum-kit grid. */}
       <div className="flex flex-col gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-raised)] p-3">
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={toggleSimplePads}
+            aria-pressed={simplePads}
+            className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+              simplePads
+                ? 'border-[var(--color-amber)] bg-[var(--color-amber)]/15 text-[var(--color-amber)]'
+                : 'border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-ivory)]'
+            }`}
+          >
+            Enkle pads
+          </button>
+        </div>
         <DrumLanes hits={groove.hits} results={trainer.results} />
-        <ScreenPads onPad={(lane) => strikeRef.current(lane)} />
+        <ScreenPads simple={simplePads} onPad={(lane, vel) => strikeRef.current(lane, vel)} />
       </div>
 
       <TimingSummary score={trainer.score} onReset={trainer.reset} />

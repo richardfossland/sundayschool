@@ -53,6 +53,8 @@ const left = song(...barsLH.map((p, i) => stack('L', i * 3, 3, p)))
 
 export const gladeJul: SeedSong = {
   slug: 'glade-jul',
+  work_slug: 'glade-jul',
+  variant_label: null,
   title: 'Glade jul',
   subtitle: 'Stille Nacht / Silent Night',
   tradition: 'salme',

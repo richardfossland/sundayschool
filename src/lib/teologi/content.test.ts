@@ -27,9 +27,14 @@ describe('teologi content — validation', () => {
     }
   })
 
-  it('every seed song has a hymn story', () => {
-    for (const slug of SEED_SLUGS) {
-      expect(hymnStoryFor(slug), `song '${slug}' has no hymn story`).not.toBeNull()
+  it('every seed song resolves to a hymn story (own slug or its work)', () => {
+    // Stories are written once per WORK; variants (enkel/firstemmig/gospel)
+    // fall back to the work's article — same lookup as HymnStoryLink.
+    for (const song of seedSongs) {
+      expect(
+        hymnStoryFor(song.slug) ?? hymnStoryFor(song.work_slug),
+        `song '${song.slug}' has no hymn story (nor its work '${song.work_slug}')`,
+      ).not.toBeNull()
     }
   })
 
@@ -52,7 +57,10 @@ describe('teologi content — validation', () => {
   })
 
   it('has the expected content volumes', () => {
-    expect(hymnStories.length).toBe(10)
+    // One story per work (the library grows with the song bank), and every
+    // story slug is unique.
+    expect(hymnStories.length).toBeGreaterThanOrEqual(12)
+    expect(new Set(hymnStories.map((s) => s.songSlug)).size).toBe(hymnStories.length)
     expect(catechismSections.length).toBe(5)
     expect(catechismSections.map((s) => s.part)).toEqual([1, 2, 3, 4, 5])
     expect(creeds.length).toBe(2)

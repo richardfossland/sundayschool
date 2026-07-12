@@ -13,7 +13,7 @@ import { createClient } from './supabase/client'
 // Every library-metadata column EXCEPT the heavy `doc` jsonb. Kept in sync with
 // the SongMeta type (= Omit<Song, 'doc'>).
 const META_COLUMNS =
-  'id, slug, title, subtitle, tradition, difficulty, original_key, mode, default_bpm, arrangement_style, rights, tags, status, created_at'
+  'id, slug, work_slug, variant_label, title, subtitle, tradition, difficulty, original_key, mode, default_bpm, arrangement_style, rights, tags, status, created_at'
 
 /** Synthesise a full Song from an authored SeedSong (DB supplies id/status in
  * production; here we mint stable stand-ins). */

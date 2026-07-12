@@ -43,6 +43,8 @@ const left = song(...barsLH.map((p, i) => stack('L', i * 3, 3, p)))
 
 export const kumbaya: SeedSong = {
   slug: 'kumbaya',
+  work_slug: 'kumbaya',
+  variant_label: null,
   title: 'Kum ba yah',
   subtitle: null,
   tradition: 'spiritual',

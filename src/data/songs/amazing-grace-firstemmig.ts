@@ -47,6 +47,8 @@ const melody = amazingGrace.doc.notes.filter((n) => n.h === 'R')
 
 export const amazingGraceFirstemmig: SeedSong = {
   slug: 'amazing-grace-firstemmig',
+  work_slug: 'amazing-grace',
+  variant_label: 'Firstemmig',
   title: 'Amazing Grace (firstemmig)',
   subtitle: 'NEW BRITAIN — utvidet sats',
   tradition: 'hymne',

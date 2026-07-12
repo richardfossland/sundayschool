@@ -38,6 +38,8 @@ for (const song of seedSongs) {
   }
   rows.push({
     slug: valid.slug,
+    work_slug: valid.work_slug,
+    variant_label: valid.variant_label,
     title: valid.title,
     subtitle: valid.subtitle,
     tradition: valid.tradition,

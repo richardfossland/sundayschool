@@ -7,9 +7,11 @@ import { hymnStoryFor } from '@/lib/teologi/content'
 // salmen"). Renders nothing when the song has no story, so callers can drop it in
 // unconditionally. Only `hymnStoryFor` is imported — a single lookup over the
 // bundled, client-safe teologi data — so the player page stays light.
+// Variants without their own article fall back to the WORK's article (pass
+// `workSlug`): stories are written once per work, not per arrangement.
 
-export function HymnStoryLink({ slug }: { slug: string }) {
-  const story = hymnStoryFor(slug)
+export function HymnStoryLink({ slug, workSlug }: { slug: string; workSlug?: string }) {
+  const story = hymnStoryFor(slug) ?? (workSlug ? hymnStoryFor(workSlug) : null)
   if (!story) return null
 
   return (

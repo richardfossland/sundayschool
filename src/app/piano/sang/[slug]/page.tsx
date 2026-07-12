@@ -73,7 +73,7 @@ export default function SangPage() {
 
             <SongPlayerLazy song={state.song} />
 
-            <HymnStoryLink slug={state.song.slug} />
+            <HymnStoryLink slug={state.song.slug} workSlug={state.song.work_slug} />
 
             <p className="mt-6 text-xs leading-relaxed text-[var(--color-muted)]">
               Fritt repertoar — alle opphavere døde før 1956.{' '}
