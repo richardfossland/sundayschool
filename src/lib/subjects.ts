@@ -132,7 +132,7 @@ export const SUBJECTS: Subject[] = [
     href: '/lovsang',
     icon: Mic,
     accent: 'var(--fag-lovsang)',
-    status: 'kommer',
+    status: 'active',
     tier: 'primary',
     tagline: 'Setlister, tonearter og overganger',
     learn: 'Bygg søndagens setliste med toneartsflyt, overganger og intro-øving',
