@@ -5,7 +5,9 @@
 // MIDI 68 is Ab, never G#. This module turns MIDI/pitch-class + key into a
 // (letter, accidental, octave) triple that VexFlow and chord labels can render.
 
-import { pitchClass } from './music'
+// Eksplisitt .ts-endelse: fila er i seed-scriptets import-graf (Node
+// type-stripping krever fulle stier — samme krav som i src/data/songs/).
+import { pitchClass } from './music.ts'
 
 export type Accidental = '' | '#' | 'b' | '##' | 'bb'
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { SongDoc } from '@/types/song'
-import { generateDrumTrack, pickGroove, hitsToEngineEvents } from './drum-track'
+import { generateDrumTrack, pickGroove, hitsToEngineEvents, lanesUsed } from './drum-track'
 import { laneOf } from './drum-lanes'
 
 // The generator is pure: same doc in, same track out. The invariants that
@@ -148,6 +148,30 @@ describe('generateDrumTrack', () => {
 
   it('is deterministic (pure)', () => {
     expect(generateDrumTrack(doc(), undefined, 96)).toEqual(generateDrumTrack(doc(), undefined, 96))
+  })
+})
+
+describe('lanesUsed', () => {
+  it('maps each hit to its lane index, folding aliases and deduping', () => {
+    // 36 = kick (lane 0), 35 = kick alias (also 0), 38 = snare (1), 42 = hi-hat (2).
+    const s = lanesUsed([
+      { t: 0, p: 36 },
+      { t: 1, p: 35 },
+      { t: 2, p: 38 },
+      { t: 3, p: 42 },
+    ])
+    expect(s).toEqual(new Set([0, 1, 2]))
+  })
+
+  it('ignores pitches outside the drawable lanes', () => {
+    expect(lanesUsed([{ t: 0, p: 99 }])).toEqual(new Set())
+  })
+
+  it('reports the toms/cymbals a fuller groove reaches', () => {
+    // 41 = low tom (lane 4), 49 = crash (7), 51 = ride (8).
+    expect(lanesUsed([{ t: 0, p: 41 }, { t: 1, p: 49 }, { t: 2, p: 51 }])).toEqual(
+      new Set([4, 7, 8]),
+    )
   })
 })
 

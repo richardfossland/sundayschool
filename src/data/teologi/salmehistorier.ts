@@ -1,17 +1,19 @@
 import type { HymnStory } from '@/types/teologi'
 
 // ── Salmehistorier ─────────────────────────────────────────────────────────────
-// One editorial article per seed song (see src/data/songs). Norwegian bokmål,
+// One editorial article per WORK (see src/data/songs). Norwegian bokmål,
 // 300–600 words each, markdown-lite (blank-line paragraphs, '### ' subheadings).
 // Facts are held to what is well established in standard hymnody literature
 // (Julian's Dictionary of Hymnology 1892; Skaar's Norsk Salmehistorie 1879–80,
 // and the songs' own rights sources); uncertain details are left out or flagged.
 //
-// DECISION — «Amazing Grace (firstemmig)» (slug amazing-grace-firstemmig) is the
-// same hymn as amazing-grace, only a fuller four-part arrangement. Rather than
-// duplicate prose, it points at the SAME body (AMAZING_GRACE_BODY) with its own
-// songSlug and a short arrangement note appended, so both song pages resolve to a
-// story. That gives 9 unique articles across 10 slugs.
+// Variants (enkel/firstemmig/gospel of the same work) share the work's article:
+// HymnStoryLink falls back from the song's slug to its work_slug, so generated
+// arrangements never need their own story here.
+//
+// DECISION — «Amazing Grace (firstemmig)» (slug amazing-grace-firstemmig)
+// predates the work/variant model and keeps its own entry: the SAME body
+// (AMAZING_GRACE_BODY) with a short arrangement note appended.
 
 const AMAZING_GRACE_BODY = `John Newton visste hva han skrev om da han satte ord på nåde. Han ble født i London i 1725, gikk tidlig til sjøs, og havnet etter hvert i slavehandelen — først som mannskap, siden som kaptein på skip som fraktet slavebundne mennesker over Atlanteren. Det var ikke en from ungdom som skrev «Amazing Grace»; det var en mann som langsomt måtte se tilbake på sitt eget liv med gru.
 
@@ -278,6 +280,64 @@ At sangen er blitt så folkelig, har noen ganget gjort at den blir tatt lett på
   },
 }
 
+const JOY_TO_THE_WORLD: HymnStory = {
+  songSlug: 'joy-to-the-world',
+  title: 'Joy to the World — julesangen som ikke handler om julenatt',
+  bodyMd: `«Joy to the World» er en av verdens mest sungne julesanger — og den nevner verken Betlehem, hyrder eller en krybbe. Teksten er nemlig ikke skrevet som julesang i det hele tatt. Isaac Watts ga den ut i 1719 i samlingen The Psalms of David Imitated, der han gjendiktet Davids salmer i lys av Kristus. «Joy to the World» er hans gjendiktning av siste del av Salme 98: «Rop med jubel for Herren, hele jorden! … for han kommer for å dømme jorden.»
+
+### Dikteren som fornyet menighetssangen
+
+Isaac Watts (1674–1748) regnes som den engelske hymnodiens far. Som ung klaget han over de tunge, ordrette salmeoversettelsene i sin fars menighet — og fikk til svar at han fikk skrive noe bedre selv. Det gjorde han: rundt 600 salmer, deriblant «When I Survey the Wondrous Cross». Watts ville at menigheten skulle synge Skriften med sitt eget språk og sitt eget hjerte, og i «Joy to the World» lot han Salme 98 peke framover mot Kongen som kommer — derfor passer den både til advent, jul og Kristi kongedag.
+
+### Melodien med Händel-klang
+
+Melodien ANTIOCH dukket opp i den amerikanske notesamlingen The Modern Psalmist (1839), redigert av Lowell Mason, med påskriften «from Handel». Åpningen — en ren fallende durskala — minner om vendinger i Händels Messias, og på 1800-tallet ble melodien gjerne tilskrevet ham. Forskningen regner i dag melodien i hovedsak som Masons eget arbeid på hendelsk grunn; nøyaktig hvor mye som er lån og hvor mye som er Mason, er fortsatt omdiskutert. Mason (1792–1872) var uansett rett mann: som kirkemusiker og musikkpedagog i Boston formet han amerikansk menighetssang mer enn noen annen i sin samtid.
+
+### Hvorfor den lever videre
+
+Sangen begynner på den høye tonika og faller trinn for trinn ned en hel oktav — hele skalaen på ett åndedrag, som om gleden ikke kan vente. Teksten svarer med samme bevegelse: himmelens konge kommer NED til jorden, og jorden svarer med sang. At en gjendiktet gammeltestamentlig salme fra 1719 og en amerikansk melodi fra 1839 skulle bli selve julejubelen, var det ingen som planla — men få sanger sier «gled dere!» tydeligere.`,
+  sources: [
+    'Isaac Watts, The Psalms of David Imitated (1719)',
+    'The Modern Psalmist (Lowell Mason, 1839)',
+    'John Julian, A Dictionary of Hymnology (1892)',
+  ],
+  rights: {
+    source:
+      'Egen tekst; kilder: Watts, The Psalms of David Imitated (1719); The Modern Psalmist (1839); Julian, Dictionary of Hymnology (1892)',
+    notes:
+      'Melodiens forhold til Händel er omdiskutert; artikkelen gjengir den vanlige forskningsvurderingen.',
+  },
+}
+
+const NAA_TAKKER_ALLE_GUD: HymnStory = {
+  songSlug: 'naa-takker-alle-gud',
+  title: 'Nå takker alle Gud — takkesalmen fra pestens by',
+  bodyMd: `Få salmer har en mørkere bakgrunn enn denne lyse takkesalmen. Martin Rinkart (1586–1649) var prest i den lille byen Eilenburg i Sachsen gjennom hele trettiårskrigen. Byen var omgitt av murer, og dit strømmet flyktninger — og med dem hungersnød og pest. I det verste året, 1637, var Rinkart til slutt den eneste presten igjen i byen. Han skal ha forrettet i tusenvis av begravelser det året, i perioder titalls om dagen. En av dem han begravde, var hans egen kone.
+
+### En bordbønn til barna
+
+Midt i dette skrev Rinkart «Nun danket alle Gott». Etter gammel tradisjon var den først ment som bordbønn for hans egne barn — en enkel takk før maten, bygd over ordene i Siraks bok 50: «Og nå, takk alle Gud, han som gjør store ting over hele jorden.» De to første strofene er ren takk; den tredje er en lovprisning av Faderen, Sønnen og Ånden. At en mann som sto midt i pest, krig og sorg, lærte barna sine å begynne med takk, er selve salmens preken.
+
+### «Det tyske Te Deum»
+
+Melodien kom fra vennen Johann Crüger (1598–1662), kantor i Berlin, som trykte salmen i sin store samling Praxis pietatis melica (1647). Sammen ble tekst og tone raskt hele det lutherske Tysklands takkesang — den kalles gjerne «det tyske Te Deum». Tradisjonen forteller at den ble sunget ved takkegudstjenestene etter Westfalerfreden i 1648, da krigen endelig var over; siden har den fulgt fredsslutninger, jubileer og høsttakkefester. Til Norden kom den tidlig via danske og norske salmebøker, og «Nå takker alle Gud» står fortsatt der menigheten trenger å samle takken i én sang.
+
+### Hvorfor den lever videre
+
+Salmen later ikke som om livet er lett — Rinkart visste bedre enn de fleste hva mennesker kan miste. Men den holder fast på at takken kommer først, «med hjerte, munn og hender»: hele mennesket, ikke bare ordene. Melodiens rolige, oppadgående åpning bærer nettopp det — en takk som reiser seg.`,
+  sources: [
+    'Praxis pietatis melica (Johann Crüger, 1647)',
+    'John Julian, A Dictionary of Hymnology (1892)',
+    'Sirak 50,22–24',
+  ],
+  rights: {
+    source:
+      'Egen tekst; kilder: Praxis pietatis melica (1647); Julian, Dictionary of Hymnology (1892)',
+    notes:
+      'Enkeltheter (bordbønn-tradisjonen, sang ved fredsslutningen 1648) er tradisjonsstoff og markert som det.',
+  },
+}
+
 /** All hymn stories, keyed by song slug via content.ts lookups. Order is only
  * for listing; lookups go through hymnStoryFor(). */
 export const hymnStories: HymnStory[] = [
@@ -291,4 +351,6 @@ export const hymnStories: HymnStory[] = [
   SWING_LOW,
   WHEN_THE_SAINTS,
   KUMBAYA,
+  JOY_TO_THE_WORLD,
+  NAA_TAKKER_ALLE_GUD,
 ]

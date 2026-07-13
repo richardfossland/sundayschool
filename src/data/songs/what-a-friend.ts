@@ -41,6 +41,8 @@ const left = song(...halves.map((p, i) => stack('L', i * 2, 2, p)))
 
 export const whatAFriend: SeedSong = {
   slug: 'what-a-friend',
+  work_slug: 'what-a-friend',
+  variant_label: null,
   title: 'What a Friend We Have in Jesus',
   subtitle: 'CONVERSE — «Hvilken venn vi har i Jesus»',
   tradition: 'hymne',

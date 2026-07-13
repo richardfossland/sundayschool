@@ -66,6 +66,8 @@ const left = song(...halves.map((p, i) => stack('L', i * 2, 2, p)))
 
 export const joyfulJoyful: SeedSong = {
   slug: 'joyful-joyful',
+  work_slug: 'joyful-joyful',
+  variant_label: null,
   title: 'Joyful, Joyful, We Adore Thee',
   subtitle: 'Hymn to Joy — Beethoven',
   tradition: 'hymne',

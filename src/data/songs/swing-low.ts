@@ -43,6 +43,8 @@ const left = song(
 
 export const swingLow: SeedSong = {
   slug: 'swing-low',
+  work_slug: 'swing-low',
+  variant_label: null,
   title: 'Swing Low, Sweet Chariot',
   subtitle: null,
   tradition: 'spiritual',

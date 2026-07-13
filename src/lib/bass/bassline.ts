@@ -12,7 +12,9 @@
 
 import type { SongChord, SongDoc } from '@/types/song'
 import type { EngineEvent } from '../engine-events'
-import { pitchClass } from '../music'
+// Eksplisitt .ts-endelse: fila er i seed-scriptets import-graf (Node
+// type-stripping krever fulle stier — samme krav som i src/data/songs/).
+import { pitchClass } from '../music.ts'
 
 export type BassLevel = 1 | 2 | 3
 

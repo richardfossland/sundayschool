@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { CheckCircle2, Music4 } from 'lucide-react'
 import type { Groove } from '@/lib/drums/types'
 import { GROOVES, FILLS } from '@/data/grooves'
+import { fitsSimplePads, readSimplePads, writeSimplePads } from '@/lib/drums/simple-pads'
 import { getProgress, type Progress } from '@/lib/progress'
 import { cn } from '@/lib/cn'
 
@@ -95,6 +96,21 @@ export function GrooveLibraryList() {
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS)
   useEffect(() => setProgress(getProgress()), [])
 
+  // "Enkle pads" mode (shared with the player via localStorage). When on, the
+  // library hides grooves/fills that need lanes the 4-pad kit doesn't have.
+  // Hydration-safe: read in an effect so the first render matches the server.
+  const [simplePads, setSimplePads] = useState(false)
+  useEffect(() => setSimplePads(readSimplePads()), [])
+  const toggleSimplePads = () =>
+    setSimplePads((on) => {
+      const next = !on
+      writeSimplePads(next)
+      return next
+    })
+
+  const grooves = simplePads ? GROOVES.filter((g) => fitsSimplePads(g.hits)) : GROOVES
+  const fills = simplePads ? FILLS.filter((f) => fitsSimplePads(f.hits)) : FILLS
+
   const grid = (items: Groove[]) => (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((g) => {
@@ -113,16 +129,32 @@ export function GrooveLibraryList() {
 
   return (
     <div className="flex flex-col gap-8">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={toggleSimplePads}
+          aria-pressed={simplePads}
+          className={cn(
+            'rounded-full border px-3.5 py-1.5 text-sm transition-colors',
+            simplePads
+              ? 'border-[var(--color-amber)] bg-[var(--color-amber)]/15 text-[var(--color-amber)]'
+              : 'border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-ivory)]',
+          )}
+          title="Vis bare grooves du kan spille med de fire store padene (basstromme, skarp, hi-hat, crash)"
+        >
+          Enkle pads
+        </button>
+      </div>
       <section>
         <h2 className="mb-4 font-display text-2xl text-[var(--color-ivory)]">Grooves</h2>
-        {grid(GROOVES)}
+        {grid(grooves)}
       </section>
       <section>
         <h2 className="mb-1 font-display text-2xl text-[var(--color-ivory)]">Fills</h2>
         <p className="mb-4 text-sm text-[var(--color-muted)]">
           Én-takts fyll — de samme som dukker opp før delskifter når du spiller til en sang.
         </p>
-        {grid(FILLS)}
+        {grid(fills)}
       </section>
     </div>
   )

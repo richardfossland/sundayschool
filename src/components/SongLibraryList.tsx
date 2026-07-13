@@ -2,19 +2,31 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, Music4 } from 'lucide-react'
+import { CheckCircle2, Music4, Search } from 'lucide-react'
 import type { SongMeta, Tradition, Difficulty } from '@/types/song'
 import { FALLBACK_META, fetchSongs } from '@/lib/songs'
 import { getProgress, type Progress } from '@/lib/progress'
 import { NOTE_NAMES } from '@/lib/music'
+import {
+  groupWorks,
+  filterWorks,
+  availableCategories,
+  type WorkGroup,
+  type WorkVariant,
+} from '@/lib/library-grouping'
 import { cn } from '@/lib/cn'
 
 // ── SongLibraryList ───────────────────────────────────────────────────────────
-// The reusable song browser (filters + card grid) lifted out of the old
-// /bibliotek page so every instrument fag can share it. `hrefBase` is the route
-// each card links to (piano → '/piano/sang'); the subject prefix used for
-// progress badges is derived from it (first path segment), matching the
-// `{fag}:{slug}` keys written by lib/progress.
+// The reusable song browser lifted out of the old /bibliotek page so every
+// instrument fag can share it. `hrefBase` is the route each card links to
+// (piano → '/piano/sang'); the subject prefix used for progress badges is
+// derived from it (first path segment), matching the `{fag}:{slug}` keys written
+// by lib/progress.
+//
+// v3 redesign for the larger song bank: arrangements are GROUPED into works
+// (one card per work_slug) with a level picker (Enkel/Firstemmig/Gospel) on the
+// card; plus free-text search and curated category chips. All grouping/filtering
+// lives in the pure, unit-tested lib/library-grouping — this file is the view.
 
 type TradFilter = Tradition | 'all'
 type DiffFilter = Difficulty | 'all'
@@ -43,8 +55,8 @@ const EMPTY_PROGRESS: Progress = {
 }
 
 /** Key label from the denormalised original_key (0–11) + mode. */
-function keyLabel(song: SongMeta): string {
-  return NOTE_NAMES[song.original_key] + (song.mode === 'minor' ? 'm' : '')
+function keyLabel(g: WorkGroup): string {
+  return NOTE_NAMES[g.original_key] + (g.mode === 'minor' ? 'm' : '')
 }
 
 /** Difficulty as ●●○ (filled = level, of 3). */
@@ -67,6 +79,9 @@ function DifficultyDots({ level }: { level: Difficulty }) {
 
 export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
   const [songs, setSongs] = useState<SongMeta[]>(FALLBACK_META)
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [category, setCategory] = useState<string | null>(null)
   const [trad, setTrad] = useState<TradFilter>('all')
   const [diff, setDiff] = useState<DiffFilter>('all')
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS)
@@ -85,23 +100,65 @@ export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
     }
   }, [])
 
+  // Debounce the search box (~200ms) so filtering doesn't run on every keypress.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 200)
+    return () => clearTimeout(id)
+  }, [query])
+
+  const groups = useMemo(() => groupWorks(songs), [songs])
+
   const traditions = useMemo(() => {
-    const present = new Set(songs.map((s) => s.tradition))
+    const present = new Set(groups.map((g) => g.tradition))
     return TRADITION_ORDER.filter((t) => present.has(t))
-  }, [songs])
+  }, [groups])
+
+  const categories = useMemo(() => availableCategories(groups), [groups])
 
   const filtered = useMemo(
-    () =>
-      songs.filter(
-        (s) => (trad === 'all' || s.tradition === trad) && (diff === 'all' || s.difficulty === diff),
-      ),
-    [songs, trad, diff],
+    () => filterWorks(groups, { query: debouncedQuery, category, tradition: trad, difficulty: diff }),
+    [groups, debouncedQuery, category, trad, diff],
   )
+
+  // The subject-prefixed progress key for a variant slug.
+  const isPracticed = (slug: string) => progress.practiced.includes(`${subject}:${slug}`)
 
   return (
     <>
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search
+          aria-hidden
+          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Søk etter sang, tittel eller stikkord …"
+          aria-label="Søk i biblioteket"
+          className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-10 pr-4 text-sm text-[var(--color-ivory)] placeholder:text-[var(--color-muted)] focus:border-[var(--color-amber)]/60 focus:outline-none"
+        />
+      </div>
+
       {/* Filters */}
       <div className="mb-6 flex flex-col gap-3">
+        {categories.length > 0 && (
+          <FilterRow label="Kategori">
+            <Chip active={category === null} onClick={() => setCategory(null)}>
+              Alle
+            </Chip>
+            {categories.map((c) => (
+              <Chip
+                key={c.id}
+                active={category === c.id}
+                onClick={() => setCategory(category === c.id ? null : c.id)}
+              >
+                {c.label}
+              </Chip>
+            ))}
+          </FilterRow>
+        )}
         <FilterRow label="Tradisjon">
           <Chip active={trad === 'all'} onClick={() => setTrad('all')}>
             Alle
@@ -124,6 +181,15 @@ export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
         </FilterRow>
       </div>
 
+      {/* Result count */}
+      {songs.length > 0 && (
+        <p className="mb-4 text-sm text-[var(--color-muted)]" aria-live="polite">
+          {filtered.length === groups.length
+            ? `${groups.length} verk`
+            : `${filtered.length} av ${groups.length} verk`}
+        </p>
+      )}
+
       {/* Grid / empty state */}
       {songs.length === 0 ? (
         <EmptyState
@@ -133,52 +199,49 @@ export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
       ) : filtered.length === 0 ? (
         <EmptyState
           title="Ingen treff"
-          body="Ingen sanger matcher filtrene. Prøv å nullstille tradisjon eller nivå."
+          body="Ingen sanger matcher søket eller filtrene. Prøv å nullstille dem."
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((song) => {
-            const key = `${subject}:${song.slug}`
-            return (
-              <SongCard
-                key={song.slug}
-                song={song}
-                hrefBase={hrefBase}
-                practiced={progress.practiced.includes(key)}
-                bestBpm={progress.bestBpm[key]}
-              />
-            )
-          })}
+          {filtered.map((g) => (
+            <WorkCard
+              key={g.work_slug}
+              group={g}
+              hrefBase={hrefBase}
+              activeDifficulty={diff === 'all' ? null : diff}
+              isPracticed={isPracticed}
+            />
+          ))}
         </div>
       )}
     </>
   )
 }
 
-function SongCard({
-  song,
+function WorkCard({
+  group,
   hrefBase,
-  practiced,
-  bestBpm,
+  activeDifficulty,
+  isPracticed,
 }: {
-  song: SongMeta
+  group: WorkGroup
   hrefBase: string
-  practiced: boolean
-  bestBpm?: number
+  activeDifficulty: Difficulty | null
+  isPracticed: (slug: string) => boolean
 }) {
-  return (
-    <Link
-      href={`${hrefBase}/${song.slug}`}
-      className="group flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 transition-colors hover:border-[var(--color-amber)]/50"
-    >
+  const single = group.variants.length === 1
+  const workPracticed = group.variants.some((v) => isPracticed(v.slug))
+
+  const header = (
+    <>
       <div className="mb-3 flex items-start justify-between gap-3">
         <span className="rounded-full bg-[var(--color-raised)] px-2.5 py-1 text-xs font-medium text-[var(--color-muted)]">
-          {TRADITION_LABEL[song.tradition]}
+          {TRADITION_LABEL[group.tradition]}
         </span>
-        {practiced && (
+        {workPracticed && (
           <span
             className="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-sea)]"
-            title={bestBpm ? `Øvd — beste ${bestBpm} BPM` : 'Øvd'}
+            title="Øvd"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
             Øvd
@@ -187,20 +250,91 @@ function SongCard({
       </div>
 
       <h2 className="font-display text-xl leading-snug text-[var(--color-ivory)] group-hover:text-[var(--color-amber)]">
-        {song.title}
+        {group.title}
       </h2>
-      {song.subtitle && <p className="mt-1 text-sm text-[var(--color-muted)]">{song.subtitle}</p>}
+      {group.subtitle && <p className="mt-1 text-sm text-[var(--color-muted)]">{group.subtitle}</p>}
+    </>
+  )
 
-      <div className="mt-auto flex items-center gap-3 pt-4 text-xs text-[var(--color-muted)]">
-        <DifficultyDots level={song.difficulty} />
-        <span aria-hidden className="h-3 w-px bg-[var(--color-border)]" />
-        <span className="inline-flex items-center gap-1">
-          <Music4 className="h-3.5 w-3.5" />
-          {keyLabel(song)}
-        </span>
-        <span aria-hidden className="h-3 w-px bg-[var(--color-border)]" />
-        <span>{song.default_bpm} BPM</span>
+  const meta = (
+    <div className="flex items-center gap-3 text-xs text-[var(--color-muted)]">
+      <span className="inline-flex items-center gap-1">
+        <Music4 className="h-3.5 w-3.5" />
+        {keyLabel(group)}
+      </span>
+      <span aria-hidden className="h-3 w-px bg-[var(--color-border)]" />
+      <span>{group.default_bpm} BPM</span>
+    </div>
+  )
+
+  // Single arrangement: the whole card is the link (as before).
+  if (single) {
+    const v = group.variants[0]
+    return (
+      <Link
+        href={`${hrefBase}/${v.slug}`}
+        className="group flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 transition-colors hover:border-[var(--color-amber)]/50"
+      >
+        {header}
+        <div className="mt-auto flex items-center gap-3 pt-4">
+          <DifficultyDots level={v.difficulty} />
+          <span aria-hidden className="h-3 w-px bg-[var(--color-border)]" />
+          {meta}
+        </div>
+      </Link>
+    )
+  }
+
+  // Several arrangements: a non-link card with a variant/level picker.
+  return (
+    <div className="group flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 transition-colors hover:border-[var(--color-amber)]/50">
+      {header}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {group.variants.map((v) => (
+          <VariantChip
+            key={v.slug}
+            variant={v}
+            hrefBase={hrefBase}
+            highlighted={activeDifficulty === v.difficulty}
+            practiced={isPracticed(v.slug)}
+          />
+        ))}
       </div>
+      <div className="mt-4 pt-3">{meta}</div>
+    </div>
+  )
+}
+
+function VariantChip({
+  variant,
+  hrefBase,
+  highlighted,
+  practiced,
+}: {
+  variant: WorkVariant
+  hrefBase: string
+  highlighted: boolean
+  practiced: boolean
+}) {
+  return (
+    <Link
+      href={`${hrefBase}/${variant.slug}`}
+      aria-label={`${variant.variant_label ?? 'Spill'}${practiced ? ' — øvd' : ''}`}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+        highlighted
+          ? 'border-[var(--color-amber)] bg-[var(--color-amber)]/15 text-[var(--color-ivory)]'
+          : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-muted)] hover:border-[var(--color-amber)]/50 hover:text-[var(--color-ivory)]',
+      )}
+    >
+      {practiced && (
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 rounded-full bg-[var(--color-sea)]"
+          title="Øvd"
+        />
+      )}
+      {variant.variant_label}
     </Link>
   )
 }

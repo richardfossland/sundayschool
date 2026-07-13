@@ -39,6 +39,8 @@ const left = song(
 
 export const whenTheSaints: SeedSong = {
   slug: 'when-the-saints',
+  work_slug: 'when-the-saints',
+  variant_label: null,
   title: 'When the Saints Go Marching In',
   subtitle: 'Oh When the Saints',
   tradition: 'spiritual',

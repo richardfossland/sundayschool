@@ -177,6 +177,8 @@ export async function importMidiFile(file: File): Promise<MidiImportResult> {
   const song: Song = {
     id: 'egen-midi',
     slug: 'egen-midi',
+    work_slug: 'egen-midi',
+    variant_label: null,
     title,
     subtitle: 'Importert MIDI-fil',
     tradition: 'salme',

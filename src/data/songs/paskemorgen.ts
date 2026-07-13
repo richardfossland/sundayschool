@@ -32,6 +32,8 @@ const left = song(...halves.map((p, i) => stack('L', i * 2, 2, p)))
 
 export const paskemorgen: SeedSong = {
   slug: 'paskemorgen',
+  work_slug: 'paskemorgen',
+  variant_label: null,
   title: 'Påskemorgen slukker sorgen',
   subtitle: 'Lindeman / Grundtvig',
   tradition: 'salme',

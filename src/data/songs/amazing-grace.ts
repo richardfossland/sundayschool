@@ -44,6 +44,8 @@ const left = song(...bars.map((p, i) => stack('L', 1 + i * 3, 3, p)))
 
 export const amazingGrace: SeedSong = {
   slug: 'amazing-grace',
+  work_slug: 'amazing-grace',
+  variant_label: 'Enkel', // verket finnes også som firstemmig-variant
   title: 'Amazing Grace',
   subtitle: 'NEW BRITAIN',
   tradition: 'hymne',

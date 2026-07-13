@@ -6,6 +6,10 @@ import {
   Church,
   BookOpen,
   Ear,
+  FileMusic,
+  AudioLines,
+  Mic,
+  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -21,8 +25,12 @@ export type SubjectId =
   | 'bass'
   | 'trommer'
   | 'teologi'
+  | 'lovsang'
   | 'teori'
   | 'gehor'
+  | 'bladspill'
+  | 'rytme'
+  | 'lydteknikk'
 
 export interface Subject {
   id: SubjectId
@@ -117,6 +125,50 @@ export const SUBJECTS: Subject[] = [
     tier: 'secondary',
     tagline: 'Intervaller og gehørtrening',
     learn: 'Hør intervaller, akkordkvalitet og melodidiktat i korte økter',
+  },
+  {
+    id: 'lovsang',
+    label: 'Lovsang',
+    href: '/lovsang',
+    icon: Mic,
+    accent: 'var(--fag-lovsang)',
+    status: 'active',
+    tier: 'primary',
+    tagline: 'Setlister, tonearter og overganger',
+    learn: 'Bygg søndagens setliste med toneartsflyt, overganger og intro-øving',
+  },
+  {
+    id: 'bladspill',
+    label: 'Bladspill',
+    href: '/bladspill',
+    icon: FileMusic,
+    accent: 'var(--fag-bladspill)',
+    status: 'active',
+    tier: 'secondary',
+    tagline: 'Les noter fra bladet',
+    learn: 'Genererte leseoppgaver i tre nivåer — mål lesehastigheten din',
+  },
+  {
+    id: 'rytme',
+    label: 'Rytme',
+    href: '/rytme',
+    icon: AudioLines,
+    accent: 'var(--fag-rytme)',
+    status: 'active',
+    tier: 'secondary',
+    tagline: 'Les og tapp rytmer',
+    learn: 'Rytmelesing med timing-feedback og rytmisk diktat',
+  },
+  {
+    id: 'lydteknikk',
+    label: 'Lydteknikk',
+    href: '/lydteknikk',
+    icon: SlidersHorizontal,
+    accent: 'var(--fag-lydteknikk)',
+    status: 'active',
+    tier: 'secondary',
+    tagline: 'For lydteamet',
+    learn: 'Gain-struktur, EQ og monitor — med interaktiv miksepult',
   },
 ]
 

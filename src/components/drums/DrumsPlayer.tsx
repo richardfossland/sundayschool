@@ -115,8 +115,11 @@ export function DrumsPlayer({ song }: Props) {
 
   // Strike helper shared by pads and MIDI (e-drums send GM pitches on channel
   // 10; connectMidi masks the channel nibble, so they arrive like any device).
-  const strikeLane = (laneIndex: number) => {
-    void getEngine().playNote(LANES[laneIndex].padPitch, 0.9, 0.3, 'drums')
+  // The played velocity drives the sound: pad tap force/position, MIDI note-on
+  // velocity, or the keyboard's flat 0.9. No "enkle pads" here — a generated
+  // song track spans all lanes, so the full kit is always needed.
+  const strikeLane = (laneIndex: number, velocity: number) => {
+    void getEngine().playNote(LANES[laneIndex].padPitch, velocity, 0.3, 'drums')
     return trainer.strike(laneIndex)
   }
   const strikeRef = useRef(strikeLane)
@@ -128,9 +131,9 @@ export function DrumsPlayer({ song }: Props) {
     setMidiError(null)
     try {
       const conn = await connectMidi({
-        onNoteOn: (pitch) => {
+        onNoteOn: (pitch, velocity) => {
           const lane = laneOf(pitch)
-          if (lane !== null) strikeRef.current(lane)
+          if (lane !== null) strikeRef.current(lane, velocity)
         },
         onNoteOff: () => {},
       })
@@ -195,7 +198,7 @@ export function DrumsPlayer({ song }: Props) {
       {/* Falling lanes + pads share the container width so lanes align with pads. */}
       <div className="flex flex-col gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-raised)] p-3">
         <DrumLanes hits={drumHits} results={trainer.results} />
-        <ScreenPads onPad={(lane) => strikeRef.current(lane)} />
+        <ScreenPads onPad={(lane, vel) => strikeRef.current(lane, vel)} />
       </div>
 
       <TimingSummary score={trainer.score} onReset={trainer.reset} />

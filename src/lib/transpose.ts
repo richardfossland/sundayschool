@@ -1,6 +1,8 @@
 import type { SongDoc, SongNote, SongChord } from '@/types/song'
-import { chordLabel, pitchClass } from './music'
-import { keyNameForTonic, parseKeySignature } from './spelling'
+// Eksplisitt .ts-endelser: fila er i seed-scriptets import-graf (Node
+// type-stripping krever fulle stier — samme krav som i src/data/songs/).
+import { chordLabel, pitchClass } from './music.ts'
+import { keyNameForTonic, parseKeySignature } from './spelling.ts'
 
 /**
  * Semitone offset to move `originalKey` → `targetKey` by the NEAREST path,
