@@ -230,6 +230,37 @@ describe('melodyExercise', () => {
     expect(tonics.size).toBeGreaterThan(1) // actually varies the key
   })
 
+  it('never repeats a note — a 2000-seed sweep at every level', () => {
+    // Clamping the degree walk at the window edges used to hand out the same
+    // note twice (19,5 % of melodies, worst chain six identical tones), which
+    // is not a dictation interval at all.
+    for (let seed = 0; seed < 2000; seed++) {
+      forLevels((level) => {
+        const ex = melodyExercise(level, createRng(seed * 10 + level))
+        expect(ex.pitches).toHaveLength(level === 1 ? 3 : level === 2 ? 5 : 7)
+        for (let i = 1; i < ex.pitches.length; i++) {
+          expect(ex.pitches[i]).not.toBe(ex.pitches[i - 1])
+        }
+      })
+    }
+  })
+
+  it('level 2 never leaps further than a perfect fourth (no tritones) — 2000 seeds', () => {
+    for (let seed = 0; seed < 2000; seed++) {
+      const ex = melodyExercise(2, createRng(seed))
+      for (let i = 1; i < ex.pitches.length; i++) {
+        expect(Math.abs(ex.pitches[i] - ex.pitches[i - 1])).toBeLessThanOrEqual(5)
+      }
+    }
+    // Level 1 stays stepwise, level 3 keeps its wider reach.
+    for (let seed = 0; seed < 200; seed++) {
+      const l1 = melodyExercise(1, createRng(seed))
+      for (let i = 1; i < l1.pitches.length; i++) {
+        expect(Math.abs(l1.pitches[i] - l1.pitches[i - 1])).toBeLessThanOrEqual(2)
+      }
+    }
+  })
+
   it('keeps the melody in a singable range around the tonic', () => {
     forLevels((level) => {
       const rng = createRng(level + 30)

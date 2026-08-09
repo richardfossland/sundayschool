@@ -56,6 +56,13 @@ function basicFill(beatsPerBar: number): DrumHit[] {
   return hits
 }
 
+/** Is a time signature compound (an eighth-note denominator grouped in threes,
+ * i.e. a triplet feel: 6/8, 9/8, 12/8) rather than simple (4/4, 3/4, 6/4)? */
+function isCompound(timeSignature: string): boolean {
+  const [num, den] = timeSignature.split('/').map(Number)
+  return den === 8 && Number.isFinite(num) && num % 3 === 0
+}
+
 /**
  * Pick the groove for a song. Explicit `style` (matching Groove.style or id)
  * wins; otherwise match the time signature and let the tempo choose the feel.
@@ -69,7 +76,13 @@ export function pickGroove(doc: Pick<SongDoc, 'timeSignature' | 'beatsPerBar'>, 
 
   let candidates = GROOVES.filter((g) => g.timeSignature === doc.timeSignature)
   if (candidates.length === 0) {
-    candidates = GROOVES.filter((g) => g.beatsPerBar === doc.beatsPerBar)
+    // Beat COUNT alone is not a match: 6/4 and 12/8 both count 6 quarter beats,
+    // but one is straight and the other is a triplet shuffle. Require the same
+    // subdivision, or fall through to the synthesised basic beat.
+    const compound = isCompound(doc.timeSignature)
+    candidates = GROOVES.filter(
+      (g) => g.beatsPerBar === doc.beatsPerBar && isCompound(g.timeSignature) === compound,
+    )
   }
   if (candidates.length === 0) return null
 
@@ -119,10 +132,22 @@ export function generateDrumTrack(doc: SongDoc, style?: string, bpm?: number): D
     }
   }
 
-  // 2) Internal section boundaries — bars are anchored at pickupBeats.
-  const boundaries = doc.sections
-    .map((s) => s.startBeat)
-    .filter((b) => b > pickupBeats + EPS && b < totalBeats - EPS)
+  // 2) Internal section boundaries — bars are anchored at pickupBeats. A
+  // section may start off the bar grid (a phrase written with an odd lead-in);
+  // a drummer still crashes on the BARLINE, so snap each boundary to the
+  // nearest one before placing the fill and the crash. Snapping can collapse
+  // two boundaries onto the same bar — dedupe so we fill/crash once.
+  const barOf = (b: number) =>
+    beatsPerBar > 0
+      ? pickupBeats + Math.round((b - pickupBeats) / beatsPerBar) * beatsPerBar
+      : b
+  const boundaries = [
+    ...new Set(
+      doc.sections
+        .map((s) => barOf(s.startBeat))
+        .filter((b) => b > pickupBeats + EPS && b < totalBeats - EPS),
+    ),
+  ].sort((a, b) => a - b)
 
   for (const b of boundaries) {
     // Swap the bar before the boundary for a fill.

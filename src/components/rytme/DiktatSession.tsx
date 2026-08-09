@@ -177,7 +177,10 @@ export function DiktatSession({ level, onLevelChange, onComplete }: Props) {
                   {OPTION_LABELS[i]}
                 </span>
                 <div className="min-w-0 flex-1 pointer-events-none">
-                  <NotationSong doc={opt.doc} />
+                  {/* A one-line rhythm on a static option card: no bass staff to
+                      leave empty, and no playback cursor to sit on the wrong
+                      alternative while the answer plays. */}
+                  <NotationSong doc={opt.doc} showMarker={false} staves="treble" />
                 </div>
               </button>
             )

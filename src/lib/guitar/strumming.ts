@@ -112,10 +112,38 @@ export function patternById(id: string | null | undefined): StrumPattern | null 
   return STRUM_PATTERNS.find((p) => p.id === id) ?? null
 }
 
-/** The natural default pattern for a song's time signature. */
+/** Quarter-note beats in one bar of `timeSignature` — the SongDoc convention
+ * (6/8 → 3, 12/8 → 6, 6/4 → 6). NaN-safe: unparseable meters give 4. */
+export function beatsPerBarOf(timeSignature: string): number {
+  const [num, den] = timeSignature.split('/').map(Number)
+  if (!Number.isFinite(num) || !Number.isFinite(den) || num <= 0 || den <= 0) return 4
+  return (num * 4) / den
+}
+
+/** A plain one-down-stroke-per-beat pattern for a meter the library has no
+ * written pattern for — a hymn strum, and above all one that COVERS the whole
+ * bar. (Tiling the 4/4 folk pattern over a 6/4 bar left beats 5–6 silent.) */
+function syntheticPatternFor(timeSignature: string): StrumPattern {
+  const beats = Math.max(1, Math.round(beatsPerBarOf(timeSignature)))
+  return {
+    id: `helslag-${timeSignature.replace('/', '-')}`,
+    label: `Helslag (${timeSignature})`,
+    timeSignature,
+    strokes: Array.from({ length: beats }, (_, i) => ({
+      t: i,
+      dir: 'D' as const,
+      accent: i === 0,
+    })),
+  }
+}
+
+/** The natural default pattern for a song's time signature. Meters with no
+ * written pattern get a synthesised one-stroke-per-beat bar rather than a
+ * 4/4 pattern that would leave the tail of the bar unstrummed. */
 export function defaultPatternFor(timeSignature: string): StrumPattern {
   const match = STRUM_PATTERNS.find((p) => p.timeSignature === timeSignature)
   if (match && timeSignature !== '4/4') return match
+  if (!match && timeSignature !== '4/4') return syntheticPatternFor(timeSignature)
   return STRUM_PATTERNS.find((p) => p.id === 'folk') ?? STRUM_PATTERNS[0]
 }
 

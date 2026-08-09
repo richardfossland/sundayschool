@@ -6,7 +6,9 @@
 //   3 Vandrende    — walking bass: root on the chord's first beat, chord tones
 //                    (third/fifth) in the middle, and a chromatic approach tone
 //                    on the last beat leading into the NEXT chord's root.
-// Slash chords (C/E) use the written bass note as the bass tone. Everything is
+// Slash chords (C/E) use the written bass note as the bass tone — but every
+// other chord tone (third, fifth) is measured from the chord ROOT, so C/E walks
+// through C–E–G, never through the E-rooted triad. Everything is
 // derived from the (already transposed) SongDoc chords, so generation is a pure
 // number transform — same output for the same input, no randomness.
 
@@ -61,9 +63,16 @@ export function chordBassPitch(c: SongChord): number {
   return nearestPitch(c.b ?? c.r)
 }
 
-/** Semitone interval of the chord's third above the root (minor for m/dim). */
-function thirdInterval(q: string): number {
-  return q.startsWith('m') && !q.startsWith('maj') ? 3 : q.startsWith('dim') ? 3 : 4
+/** Semitone interval of the chord's characteristic third above the root: minor
+ * for m/dim, a FOURTH for sus4/7sus4 and a SECOND for sus2 (a sus chord has no
+ * third — walking through one is a wrong note), null for a power chord. */
+function thirdInterval(q: string): number | null {
+  if (q === 'sus4' || q === '7sus4') return 5
+  if (q === 'sus2') return 2
+  if (q === '5') return null
+  if (q.startsWith('dim')) return 3
+  if (q.startsWith('m') && !q.startsWith('maj')) return 3
+  return 4
 }
 
 /** Semitone interval of the chord's fifth above the root (dim ♭5, aug ♯5). */
@@ -71,6 +80,13 @@ function fifthInterval(q: string): number {
   if (q.startsWith('dim') || q === 'm7b5') return 6
   if (q === 'aug') return 8
   return 7
+}
+
+/** A chord tone `interval` above the chord ROOT, voiced at or above the bass
+ * note. Chord tones are ALWAYS measured from `c.r`, never from a slash bass:
+ * C/E is still C–E–G, so its fifth is G — not B, a fifth above the E. */
+function toneOverBass(c: SongChord, bass: number, interval: number): number {
+  return bass + pitchClass(c.r + interval - bass)
 }
 
 /** Is `beat` a heavy beat of the bar? Beat 1 always; in even meters (4/4) also
@@ -133,9 +149,9 @@ export function generateBassline(
     const durAt = (j: number) => (j < grid.length - 1 ? grid[j + 1] - grid[j] : chordEnd - grid[j])
 
     if (level === 2) {
-      // Root on heavy beats, fifth on light beats. The fifth is voiced from the
-      // root and folded into range (so it may sound a fourth below).
-      const fifth = root + fifthInterval(c.q)
+      // Bass note on heavy beats, the CHORD's fifth on light beats. The fifth
+      // is voiced above the bass note and folded into range by push().
+      const fifth = toneOverBass(c, root, fifthInterval(c.q))
       for (let j = 0; j < grid.length; j++) {
         const heavy = isHeavyBeat(grid[j], doc.beatsPerBar, doc.pickupBeats)
         push(grid[j], heavy ? root : fifth, durAt(j))
@@ -146,8 +162,10 @@ export function generateBassline(
     // Level 3 — walking. Root first; chord tones (third, fifth, alternating) in
     // the middle; approach tone into the next chord's root on the last beat.
     const next = i + 1 < sorted.length ? sorted[i + 1] : null
-    const third = root + thirdInterval(c.q)
-    const fifth = root + fifthInterval(c.q)
+    const thirdIv = thirdInterval(c.q)
+    const fifth = toneOverBass(c, root, fifthInterval(c.q))
+    // A chord with no third (power chord) walks through its fifth instead.
+    const third = thirdIv === null ? fifth : toneOverBass(c, root, thirdIv)
     for (let j = 0; j < grid.length; j++) {
       const last = j === grid.length - 1
       let pitch: number

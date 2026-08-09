@@ -138,12 +138,20 @@ export interface MelodyExercise {
   tonic: number
 }
 
+/** Widest leap allowed at each level, in SEMITONES. Level 2 stops at a perfect
+ * fourth: a scale step of three degrees can span a tritone (F→B), which is not
+ * a dictation interval for a second-level ear. */
+const MAX_LEAP_SEMITONES: Record<Level, number> = { 1: 2, 2: 5, 3: 12 }
+
 /**
  * Melody exercise per level:
  *   1 — 3 notes, C major, stepwise (adjacent scale degrees), from the tonic
  *   2 — 5 notes, C major, leaps up to a fourth allowed
  *   3 — 7 notes, a random major key, leaps allowed
  * All notes stay diatonic and within roughly one octave around the tonic.
+ * Consecutive notes are always DIFFERENT: the walk is clamped to the degree
+ * window, and a step that the clamp would swallow (leaving the melody sitting
+ * on the same note) is redrawn — a repeated tone is not a dictation interval.
  */
 export function melodyExercise(level: Level, rng: Rng): MelodyExercise {
   const tonicPc = level === 3 ? randInt(rng, 0, 11) : 0
@@ -163,13 +171,32 @@ export function melodyExercise(level: Level, rng: Rng): MelodyExercise {
     return base + pitchClass(pc - tonic)
   }
 
+  const maxSemitones = MAX_LEAP_SEMITONES[level]
+  // Clamped landing degree for a step, and whether it is a usable move: it must
+  // actually move (the clamp must not swallow it) and stay inside the level's
+  // semitone reach.
+  const landing = (from: number, step: number) => Math.max(-3, Math.min(7, from + step))
+  const usable = (from: number, step: number) => {
+    const to = landing(from, step)
+    return to !== from && Math.abs(degreeToMidi(to) - degreeToMidi(from)) <= maxSemitones
+  }
+
   let degree = 0 // start on the tonic
   const pitches: number[] = [degreeToMidi(degree)]
   for (let i = 1; i < length; i++) {
     let step = 0
-    while (step === 0) step = randInt(rng, -maxLeap, maxLeap)
-    // Keep the walk inside one octave of degrees around the tonic.
-    degree = Math.max(-3, Math.min(7, degree + step))
+    // Redraw while the clamp would repeat the note or the leap is too wide.
+    for (let attempt = 0; attempt < 16 && !usable(degree, step); attempt++) {
+      step = randInt(rng, -maxLeap, maxLeap)
+    }
+    if (!usable(degree, step)) {
+      // Deterministic fallback (the RNG kept missing): the smallest usable
+      // move, trying upwards first — at the top of the window only down works.
+      const fallback = [1, -1, 2, -2, 3, -3].find((s) => usable(degree, s))
+      if (fallback === undefined) break // no legal move at all — end the melody
+      step = fallback
+    }
+    degree = landing(degree, step)
     pitches.push(degreeToMidi(degree))
   }
   return { pitches, tonic }

@@ -7,6 +7,7 @@ import { validateSeedSong } from '../song/format.ts'
 import { generatePianoArrangement, type ArrangementLevel } from './piano-arrangement.ts'
 import { julSources } from '@/data/songs/sources/jul.ts'
 import { norskeSources } from '@/data/songs/sources/norske.ts'
+import { songSources } from '@/data/songs/sources/index.ts'
 
 // ── Arranger: contract + register/voice-leading invariants ───────────────────
 // The generator's promises are structural: deterministic output, the source
@@ -200,6 +201,156 @@ describe('generatePianoArrangement', () => {
     for (const f of fills) {
       expect(f.p).toBeGreaterThanOrEqual(62)
       expect(f.p).toBeLessThan(sopByOnset.get(f.t)!)
+    }
+  })
+
+  // ── Regressions: confirmed review findings (each one was measured) ──────────
+  // Every case below produced wrong notes in the generated library before the
+  // fix, so they assert the RULE across the whole source library, not one song.
+
+  /** Left-hand notes sounding during a chord's span. */
+  const lhDuring = (notes: SongNote[], t: number, d: number) =>
+    notes.filter((n) => n.h === 'L' && n.t >= t - EPS && n.t < t + d - EPS)
+
+  /** The melody notes sounding while `n` is held (melody is monophonic). */
+  const melodyUnder = (melody: SongNote[], n: SongNote) =>
+    melody.filter((m) => m.t + EPS >= n.t && m.t < n.t + n.d - EPS)
+
+  it('slash chords: the written bass is the lowest LH note, thirds/fifths come from the ROOT', () => {
+    // C/E must sound C–E–G tones over an E bass — never B (a fifth above the E)
+    // or G# (a third above it), the bug this pins.
+    const slash: SongSource = {
+      ...tiny,
+      slug: 'slash-test-song',
+      chords: [
+        { t: 0, d: 4, r: 0, q: '', b: 4 }, // C/E
+        { t: 4, d: 4, r: 7, q: '', b: 11 }, // G/B
+      ],
+      levels: [1, 2],
+    }
+    for (const level of [1, 2] as const) {
+      const arr = generatePianoArrangement(slash, level)
+      for (const c of arr.doc.chords) {
+        const lh = lhDuring(arr.doc.notes, c.t, c.d)
+        expect(lh.length).toBeGreaterThan(0)
+        const allowed = new Set(chordPitchClasses(c.r, c.q)) // C/E → {C, E, G}
+        for (const n of lh) expect(allowed.has(pitchClass(n.p))).toBe(true)
+        const lowest = Math.min(...lh.map((n) => n.p))
+        expect(pitchClass(lowest)).toBe(c.b) // the slash bass stays in the bass
+      }
+    }
+
+    // …and across the whole library: no LH note outside the chord's own tones.
+    for (const src of songSources) {
+      for (const level of src.levels) {
+        if (level === 3) continue // gospel adds a colour 9th, checked separately
+        const arr = generatePianoArrangement(src, level)
+        for (const c of arr.doc.chords) {
+          const allowed = new Set([...chordPitchClasses(c.r, c.q), pitchClass(c.b ?? c.r)])
+          for (const n of lhDuring(arr.doc.notes, c.t, c.d)) {
+            expect(allowed.has(pitchClass(n.p))).toBe(true)
+          }
+        }
+      }
+    }
+  })
+
+  it('the left hand rests through the pickup (opptakt) at every level', () => {
+    for (const src of songSources) {
+      if (src.pickupBeats <= 0) continue
+      for (const level of src.levels) {
+        const arr = generatePianoArrangement(src, level)
+        for (const n of arr.doc.notes) {
+          if (n.h === 'L') expect(n.t).toBeGreaterThanOrEqual(src.pickupBeats - EPS)
+        }
+        // …and the accompaniment starts exactly on the first downbeat.
+        const firstLh = Math.min(...arr.doc.notes.filter((n) => n.h === 'L').map((n) => n.t))
+        expect(firstLh).toBeCloseTo(src.pickupBeats, 6)
+      }
+    }
+  })
+
+  it('gospel: the LH voicing keeps a minor third between simultaneous voices', () => {
+    for (const src of songSources) {
+      if (!src.levels.includes(3)) continue
+      const arr = generatePianoArrangement(src, 3)
+      for (const c of arr.doc.chords) {
+        // The LH rests through the pickup, so a chord may be (partly) silent.
+        const start = Math.max(c.t, src.pickupBeats)
+        const dur = c.t + c.d - start
+        if (dur <= EPS) continue
+        const ps = lhDuring(arr.doc.notes, start, dur)
+          .map((n) => n.p)
+          .sort((a, b) => a - b)
+        expect(ps.length).toBeGreaterThan(0)
+        for (let i = 1; i < ps.length; i++) expect(ps[i] - ps[i - 1]).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+
+  it('gospel: fills clear the LH register and keep a minor third to the melody', () => {
+    for (const src of songSources) {
+      if (!src.levels.includes(3)) continue
+      const arr = generatePianoArrangement(src, 3)
+      const sopByOnset = new Map(soprano(arr.doc.notes).map((n) => [n.t, n.p]))
+      const fills = arr.doc.notes.filter((n) => n.h === 'R' && n.p !== sopByOnset.get(n.t))
+      for (const f of fills) {
+        expect(f.p).toBeGreaterThanOrEqual(65) // above the whole gospel LH register
+        for (const m of melodyUnder(arr.doc.notes.filter((n) => n.h === 'R' && n.p === sopByOnset.get(n.t)), f)) {
+          expect(m.p - f.p).toBeGreaterThanOrEqual(3)
+        }
+        for (const n of lhDuring(arr.doc.notes, f.t, f.d)) expect(f.p).toBeGreaterThan(n.p)
+      }
+    }
+  })
+
+  it('sus chords never get a major third (fills use the chord\'s own tones)', () => {
+    const sus: SongSource = {
+      ...tiny,
+      slug: 'sus-test-song',
+      melody: [
+        { p: 72, t: 0, d: 4, h: 'R' }, // long enough to trigger a fill, high enough to allow one
+        { p: 72, t: 4, d: 4, h: 'R' },
+      ],
+      chords: [
+        { t: 0, d: 4, r: 0, q: '7sus4' }, // C7sus4 → C F G Bb, no E
+        { t: 4, d: 4, r: 0, q: 'sus2' }, // Csus2 → C D G, no E
+      ],
+      levels: [3],
+    }
+    const arr = generatePianoArrangement(sus, 3)
+    const sopByOnset = new Map(soprano(arr.doc.notes).map((n) => [n.t, n.p]))
+    const fills = arr.doc.notes.filter((n) => n.h === 'R' && n.p !== sopByOnset.get(n.t))
+    expect(fills.length).toBeGreaterThan(0)
+    for (const f of fills) {
+      const chord = arr.doc.chords.find((c) => Math.abs(c.t - f.t) < EPS)!
+      const allowed = new Set([...chordPitchClasses(chord.r, chord.q), pitchClass(chord.r + 2)])
+      expect(allowed.has(pitchClass(f.p))).toBe(true)
+      expect(pitchClass(f.p)).not.toBe(4) // E — the third a sus chord does not have
+    }
+  })
+
+  it('firstemmig: the alto never crowds or tops the soprano, anywhere in the library', () => {
+    for (const src of songSources) {
+      if (!src.levels.includes(2)) continue
+      const arr = generatePianoArrangement(src, 2)
+      const sopByOnset = new Map(soprano(arr.doc.notes).map((n) => [n.t, n.p]))
+      const melody = arr.doc.notes.filter((n) => n.h === 'R' && n.p === sopByOnset.get(n.t))
+      const altos = arr.doc.notes
+        .filter((n) => n.h === 'R' && n.p !== sopByOnset.get(n.t))
+        .sort((a, b) => a.t - b.t)
+      let prev: number | null = null
+      for (const a of altos) {
+        expect(a.p).toBeGreaterThanOrEqual(60) // floor C4
+        // Holds through later melody notes too — a held alto must stay under.
+        for (const m of melodyUnder(melody, a)) {
+          expect(m.p - a.p).toBeGreaterThanOrEqual(3)
+        }
+        const chord = arr.doc.chords.find((c) => c.t <= a.t + EPS && a.t < c.t + c.d - EPS)!
+        expect(chordPitchClasses(chord.r, chord.q)).toContain(pitchClass(a.p))
+        if (prev !== null) expect(Math.abs(a.p - prev)).toBeLessThanOrEqual(5)
+        prev = a.p
+      }
     }
   })
 

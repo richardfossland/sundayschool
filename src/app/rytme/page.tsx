@@ -36,6 +36,7 @@ export default function RytmePage() {
   const [level, setLevel] = useState<Level>(1)
   const [best, setBest] = useState<Record<string, number>>({})
   const [tapExercise, setTapExercise] = useState<RhythmExercise | null>(null)
+  const [tapRound, setTapRound] = useState(0)
   const [diktatRound, setDiktatRound] = useState(0)
   const [diktatResult, setDiktatResult] = useState<number | null>(null)
 
@@ -45,10 +46,17 @@ export default function RytmePage() {
   }, [])
 
   // Keep a tap rhythm ready for the current level (client-only — avoids SSR
-  // divergence from the Date.now() seed).
-  const newTapRhythm = () => setTapExercise(generateRhythm(level, createRng(Date.now())))
+  // divergence from the Date.now() seed). `tapRound` counts rhythms so the
+  // session's key is always fresh: two level-1 rhythms can be identical in
+  // length, note count and first onset, and a repeated key would keep the old
+  // session (and its score) alive.
+  const newTapRhythm = () => {
+    setTapExercise(generateRhythm(level, createRng(Date.now())))
+    setTapRound((r) => r + 1)
+  }
   useEffect(() => {
     setTapExercise(generateRhythm(level, createRng(Date.now())))
+    setTapRound((r) => r + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level])
 
@@ -162,7 +170,7 @@ export default function RytmePage() {
         {/* Tapp */}
         {tab === 'tapp' && tapExercise && (
           <TapSession
-            key={`tapp-${level}-${tapExercise.lengthBeats}-${tapExercise.doc.notes.length}-${tapExercise.doc.notes[0]?.t ?? 0}`}
+            key={`tapp-${level}-${tapRound}`}
             exercise={tapExercise}
             level={level}
             onScore={onTapScore}

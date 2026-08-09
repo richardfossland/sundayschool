@@ -168,11 +168,15 @@ function fillBar(pool: Fig[], barBeats: number, rng: Rng): Fig[] {
   return out
 }
 
-function planRhythm(level: Level, rng: Rng): RhythmPlan {
-  const meter = meterFor(level, rng)
+/** Fill a fresh plan in a GIVEN meter (no new meter draw). */
+function planInMeter(meter: Meter, rng: Rng): RhythmPlan {
   const bars: Fig[][] = []
   for (let b = 0; b < meter.bars; b++) bars.push(fillBar(meter.pool, meter.barBeats, rng))
   return { meter, bars }
+}
+
+function planRhythm(level: Level, rng: Rng): RhythmPlan {
+  return planInMeter(meterFor(level, rng), rng)
 }
 
 // ── Plan → exercise (hits + doc) ─────────────────────────────────────────────
@@ -227,15 +231,21 @@ function onsetSignature(hits: DrumHit[]): string {
   return hits.map((h) => Math.round(h.t * 1000)).join(',')
 }
 
+function hitCount(plan: RhythmPlan): number {
+  return plan.bars.reduce((a, bar) => a + bar.reduce((s, f) => s + f.notes.length, 0), 0)
+}
+
 /** A non-degenerate plan (at least two hits) — resamples if the RNG produced an
- * (almost) empty bar sequence. Deterministic: it keeps drawing from the SAME rng. */
-function planRhythmNonEmpty(level: Level, rng: Rng): RhythmPlan {
+ * (almost) empty bar sequence. Deterministic: it keeps drawing from the SAME rng.
+ * `meter` pins the meter (dictation options must share one); without it each
+ * attempt draws a fresh meter, as a standalone exercise should. */
+function planRhythmNonEmpty(level: Level, rng: Rng, meter?: Meter): RhythmPlan {
+  const draw = () => (meter ? planInMeter(meter, rng) : planRhythm(level, rng))
   for (let i = 0; i < 8; i++) {
-    const plan = planRhythm(level, rng)
-    const count = plan.bars.reduce((a, bar) => a + bar.reduce((s, f) => s + f.notes.length, 0), 0)
-    if (count >= 2) return plan
+    const plan = draw()
+    if (hitCount(plan) >= 2) return plan
   }
-  return planRhythm(level, rng)
+  return draw()
 }
 
 /** Generate one rhythm (hits + notation doc) for the given level and RNG. */
@@ -299,8 +309,11 @@ export function rhythmDictation(level: Level, rng: Rng): RhythmDictation {
 
   // Fallback (only if the bounded search stalled): derive fresh rhythms until we
   // have two distinct distractors. Guaranteed to terminate — the RNG keeps moving.
+  // The meter is PINNED to the played rhythm's: an option in another time
+  // signature is not a plausible answer, it is a giveaway (and at level 3 a
+  // fresh draw would happily hand out a 3/4 or 6/8 bar).
   while (distractors.length < 2) {
-    const ex = generateRhythm(level, rng)
+    const ex = planToExercise(planRhythmNonEmpty(level, rng, correctPlan.meter))
     const sig = onsetSignature(ex.hits)
     if (used.has(sig)) continue
     used.add(sig)

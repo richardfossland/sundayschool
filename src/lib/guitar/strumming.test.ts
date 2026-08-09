@@ -4,6 +4,7 @@ import { chordPitchClasses, pitchClass } from '@/lib/music'
 import { shapesAtCapo } from './capo'
 import {
   STRUM_PATTERNS,
+  beatsPerBarOf,
   defaultPatternFor,
   patternById,
   strumEvents,
@@ -42,6 +43,39 @@ describe('pattern registry', () => {
   it('patternById returns null for unknown/none', () => {
     expect(patternById('nope')).toBeNull()
     expect(patternById(null)).toBeNull()
+  })
+
+  it('synthesises a full-bar pattern for meters with no written one', () => {
+    // 6/4 used to fall back to the 4/4 folk pattern, leaving beats 5–6 unstrummed.
+    const p = defaultPatternFor('6/4')
+    expect(p.timeSignature).toBe('6/4')
+    expect(p.strokes.map((s) => s.t)).toEqual([0, 1, 2, 3, 4, 5])
+    expect(p.strokes.every((s) => s.dir === 'D')).toBe(true)
+    expect(p.strokes[0].accent).toBe(true)
+    expect(defaultPatternFor('5/4').strokes).toHaveLength(5)
+    expect(beatsPerBarOf('6/8')).toBe(3) // compound meters keep the SongDoc convention
+    expect(beatsPerBarOf('12/8')).toBe(6)
+  })
+})
+
+describe('strumEvents — full-bar coverage', () => {
+  it('6/4: every beat of the bar is strummed', () => {
+    const events = strumEvents([ch(0, 6, 7)], defaultPatternFor('6/4'), 6, 6)
+    for (let b = 0; b < 6; b++) {
+      // A stroke starts on every beat (the string sweep staggers by ≤ 0.1).
+      expect(events.some((e) => Math.abs(e.beat - b) < 0.1)).toBe(true)
+    }
+    for (const e of events) expect(e.beat).toBeLessThan(6)
+  })
+
+  it('every registered meter is covered beat by beat by its default pattern', () => {
+    for (const [ts, bpb] of [['4/4', 4], ['3/4', 3], ['6/8', 3], ['6/4', 6]] as const) {
+      const events = strumEvents([ch(0, bpb, 7)], defaultPatternFor(ts), bpb, bpb)
+      for (let b = 0; b < bpb; b++) {
+        const inBeat = events.filter((e) => e.beat >= b - 1e-6 && e.beat < b + 1)
+        expect(inBeat.length).toBeGreaterThan(0)
+      }
+    }
   })
 })
 

@@ -8,7 +8,7 @@ import {
   nearestPitch,
 } from './bassline'
 import type { SongChord } from '@/types/song'
-import { pitchClass } from '../music'
+import { chordPitchClasses, pitchClass } from '../music'
 
 // Meter stubs — generateBassline only reads beatsPerBar/pickupBeats.
 const M44 = { beatsPerBar: 4, pickupBeats: 0 }
@@ -121,6 +121,39 @@ describe('generateBassline — level 3 (vandrende)', () => {
         expect(e.pitch).toBeGreaterThanOrEqual(BASS_LOW)
         expect(e.pitch).toBeLessThanOrEqual(BASS_HIGH)
       }
+    }
+  })
+
+  it('slash chords: only the BASS note comes from the slash, chord tones from the root', () => {
+    // C/E: the bass is E, but the walking tones are C's third and fifth (E, G).
+    // Before the fix the fifth was measured from the E — a B, foreign to C major.
+    const cOverE = chord(0, 4, 0, '', 4)
+    const cPcs = new Set(chordPitchClasses(0, ''))
+    for (const level of [1, 2, 3] as const) {
+      const evs = generateBassline([cOverE], M44, level)
+      expect(evs.length).toBeGreaterThan(0)
+      for (const e of evs) expect(cPcs.has(pitchClass(e.pitch))).toBe(true)
+      expect(pitchClass(evs[0].pitch)).toBe(4) // …and the chord still starts on its slash bass
+    }
+    // Level 2 alternates bass / fifth: the fifth of C/E is G, never B.
+    const l2 = generateBassline([cOverE], M44, 2)
+    expect(l2.map((e) => pitchClass(e.pitch))).toEqual([4, 7, 4, 7])
+  })
+
+  it('sus chords walk through their own tone, never a major third', () => {
+    // C7sus4 = C F G Bb. The old generator walked through E.
+    const evs = generateBassline([chord(0, 4, 0, '7sus4'), chord(4, 4, 5)], M44, 3)
+    const susPcs = new Set(chordPitchClasses(0, '7sus4'))
+    for (const e of evs.filter((x) => x.beat < 3)) {
+      expect(susPcs.has(pitchClass(e.pitch))).toBe(true)
+      expect(pitchClass(e.pitch)).not.toBe(4)
+    }
+    expect(pitchClass(evs[1].pitch)).toBe(5) // the sus 4th, F
+    // A power chord has no third at all — it walks through the fifth.
+    const power = generateBassline([chord(0, 4, 7, '5'), chord(4, 4, 0)], M44, 3)
+    const powerPcs = new Set(chordPitchClasses(7, '5'))
+    for (const e of power.filter((x) => x.beat < 3)) {
+      expect(powerPcs.has(pitchClass(e.pitch))).toBe(true)
     }
   })
 

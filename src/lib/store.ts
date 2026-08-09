@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import type { HandFilter } from '@/types/song'
+import type { InstrumentId } from '@/lib/instruments'
 
-// TODO(W0-A): replace this local alias with `import type { InstrumentId } from
-// '@/lib/instruments'` once that module lands. Kept local so this file
-// typechecks while instruments/ is built in parallel.
-export type InstrumentId = 'piano' | 'guitar' | 'bass' | 'drums'
+// Re-exported so existing `import type { InstrumentId } from '@/lib/store'`
+// call sites keep working; the canonical definition lives in lib/instruments.
+export type { InstrumentId }
 
 // Transport + practice state shared between the playback engine and the UI.
 // Same philosophy as SundayLicks: `currentBeat` is the ONE time source — the

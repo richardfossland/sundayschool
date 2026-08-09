@@ -6,6 +6,7 @@ import {
   rhythmDictation,
   seededShuffle,
   type Level,
+  type Rng,
 } from './exercises'
 
 const SAMPLES = 120
@@ -155,6 +156,48 @@ describe('rhythmDictation', () => {
         }
       }
     })
+  })
+
+  it('keeps the meter even when the mutation search stalls into the fallback', () => {
+    // Forcing the stall: an RNG whose first `zeros` draws are identical makes
+    // every mutation identical too, so the bounded search runs dry and the
+    // FALLBACK builds fresh rhythms. The draws right after that return 0.9 —
+    // the value that picks 6/8 if anything asks for a meter. The old fallback
+    // called generateRhythm, which did ask, and handed the learner a 6/8 option
+    // next to a 4/4 one: a giveaway, not a distractor. Sweeping the prefix
+    // length walks the phase change across the whole fallback entry.
+    const scriptedRng = (zeros: number, highs: number): Rng => {
+      const real = createRng(7)
+      let calls = 0
+      return () => {
+        calls++
+        if (calls <= zeros) return 0
+        if (calls <= zeros + highs) return 0.9
+        return real()
+      }
+    }
+    for (let zeros = 100; zeros <= 200; zeros++) {
+      const { options, correctIndex } = rhythmDictation(3, scriptedRng(zeros, 40))
+      expect(options.length).toBe(3)
+      expect(new Set(options.map((o) => o.doc.timeSignature)).size).toBe(1)
+      expect(new Set(options.map((o) => o.lengthBeats)).size).toBe(1)
+      expect(correctIndex).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('all three options share the played rhythm\'s meter — a 2000-seed sweep', () => {
+    // The fallback distractor path used to call generateRhythm, which draws a
+    // FRESH meter at level 3: an option in another time signature is a giveaway.
+    for (let seed = 0; seed < 2000; seed++) {
+      for (const level of [1, 2, 3] as const) {
+        const { options } = rhythmDictation(level, createRng(seed * 4 + level))
+        const meters = new Set(options.map((o) => o.doc.timeSignature))
+        const lengths = new Set(options.map((o) => o.lengthBeats))
+        expect(meters.size).toBe(1)
+        expect(lengths.size).toBe(1)
+        expect(new Set(options.map((o) => o.doc.beatsPerBar)).size).toBe(1)
+      }
+    }
   })
 
   it('is deterministic per seed', () => {

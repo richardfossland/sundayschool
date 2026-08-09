@@ -58,6 +58,19 @@ describe('pickGroove', () => {
   it('returns null for an unknown meter (generator then synthesises)', () => {
     expect(pickGroove({ timeSignature: '5/4', beatsPerBar: 5 })).toBeNull()
   })
+
+  it('never matches a meter on beat COUNT alone across subdivisions', () => {
+    // 6/4 and 12/8 both count 6 quarter beats, but a straight 6/4 hymn must not
+    // be handed the 12/8 triplet shuffle. No 6/4 groove exists → synthesise.
+    expect(pickGroove({ timeSignature: '6/4', beatsPerBar: 6 })).toBeNull()
+    // …while the compound meters still find their compound grooves.
+    expect(pickGroove({ timeSignature: '12/8', beatsPerBar: 6 })?.id).toBe('gospel-shuffle-128')
+    expect(pickGroove({ timeSignature: '6/8', beatsPerBar: 3 })?.id).toBe('ballade-68')
+    // An explicit style override still wins, whatever the meter.
+    expect(pickGroove({ timeSignature: '6/4', beatsPerBar: 6 }, { style: 'shuffle' })?.id).toBe(
+      'gospel-shuffle-128',
+    )
+  })
 })
 
 describe('generateDrumTrack', () => {
@@ -144,6 +157,49 @@ describe('generateDrumTrack', () => {
     const hits = generateDrumTrack(d)
     expect(hits.length).toBeGreaterThan(0)
     expect(hits.some((h) => h.p === 36 && h.t === 0)).toBe(true) // downbeat kick
+  })
+
+  it('snaps an off-grid section boundary to the barline (fill + crash)', () => {
+    // come-thou-fount's shape: 3/4 with a 1-beat pickup, phrases written at
+    // 12/24/36 — none of which is a barline (bars run 1, 4, 7, 10, 13 …). The
+    // crash used to land on the third beat of a bar; it must land on a downbeat.
+    const d = doc({
+      timeSignature: '3/4',
+      beatsPerBar: 3,
+      pickupBeats: 1,
+      totalBeats: 48,
+      sections: [
+        { id: 'a1', kind: 'verse', label: 'Frase 1', startBeat: 0, endBeat: 12 },
+        { id: 'a2', kind: 'verse', label: 'Frase 2', startBeat: 12, endBeat: 24 },
+        { id: 'b', kind: 'bridge', label: 'Midtdel', startBeat: 24, endBeat: 36 },
+        { id: 'a3', kind: 'ending', label: 'Slutt', startBeat: 36, endBeat: 48 },
+      ],
+    })
+    const hits = generateDrumTrack(d)
+    const onGrid = (t: number) => Math.abs(((t - 1) % 3) - 0) < 1e-6 || Math.abs(((t - 1) % 3) - 3) < 1e-6
+    const crashes = hits.filter((h) => h.p === CRASH).map((h) => h.t)
+    expect(crashes.length).toBe(3)
+    for (const t of crashes) expect(onGrid(t)).toBe(true)
+    expect(crashes).toEqual([13, 25, 37]) // nearest barline to 12 / 24 / 36
+    // The fill sits in the bar BEFORE the snapped boundary, never across it.
+    for (const t of crashes) {
+      const fillBar = hits.filter((h) => h.t >= t - 3 - 1e-6 && h.t < t)
+      expect(fillBar.length).toBeGreaterThan(0)
+      expect(fillBar.some((h) => Math.abs(h.t - (t - 0.5)) < 1e-6 && h.p === 38)).toBe(true)
+    }
+  })
+
+  it('does not double up when two boundaries snap to the same bar', () => {
+    const d = doc({
+      totalBeats: 24,
+      sections: [
+        { id: 'a', kind: 'verse', label: 'Vers', startBeat: 0, endBeat: 7 },
+        { id: 'b', kind: 'refrain', label: 'Refreng', startBeat: 7, endBeat: 9 },
+        { id: 'c', kind: 'ending', label: 'Slutt', startBeat: 9, endBeat: 24 },
+      ],
+    })
+    const crashes = generateDrumTrack(d).filter((h) => h.p === CRASH)
+    expect(crashes.map((h) => h.t)).toEqual([8]) // 7 and 9 both snap to bar 8
   })
 
   it('is deterministic (pure)', () => {

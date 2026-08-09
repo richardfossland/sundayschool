@@ -14,6 +14,10 @@
 //                  into F2–E4, one voicing held per chord; RH adds a fill tone
 //                  (third or ninth) under long melody notes at chord changes.
 //
+// The LEFT HAND rests through the pickup (opptakt) at every level — a band
+// does not play an accompaniment block under an anacrusis, and the melody alone
+// carries the lead-in.
+//
 // Guarantees BY CONSTRUCTION (given a validated source): the soprano line is
 // the source melody, untouched; both hands are active with no gap > 2 beats;
 // every arrangement passes validateSeedSong. src/data/songs.test.ts runs all
@@ -56,14 +60,20 @@ const LH_ROOT_HIGH = 53 // F3
 const LH_ANCHOR = 46 // Bb2
 
 const ALTO_FLOOR = 60 // C4
-const FILL_FLOOR = 62 // D4
-const MAX_ALTO_LEAP = 5 // a fourth
+// Fills sit ABOVE the gospel LH register, so a fill can never double or
+// undercut the top of the voicing it is meant to colour.
+const FILL_FLOOR = GOSPEL_HIGH + 1 // F4
+const MAX_ALTO_LEAP = 5 // a fourth (a soft target — see altoVoice)
+/** Minimum distance between the alto/fill and the soprano, in semitones. */
+const MIN_UNDER_MELODY = 3
+/** Minimum distance between two simultaneous voices of a gospel LH voicing. */
+const MIN_VOICE_GAP = 3
 const EPS = 1e-6
 
-/** Semitone interval of the chord's third above the root (minor for m/dim). */
-function thirdInterval(q: string): number {
-  return (q.startsWith('m') && !q.startsWith('maj')) || q.startsWith('dim') ? 3 : 4
-}
+// NB: this module never computes a "third" by interval any more. A hard-coded
+// major/minor third told sus4/sus2/5 chords they had a third they do not have,
+// so the chord's own spelling (chordPitchClasses) is the single source of truth
+// for chord tones here — see gospelFills.
 
 /** Semitone interval of the chord's fifth above the root (dim ♭5, aug ♯5). */
 function fifthInterval(q: string): number {
@@ -89,14 +99,6 @@ function nearestPitchInRange(pc: number, low: number, high: number, anchor: numb
   return best
 }
 
-/** Fold a pitch into [low, high] by octave shifts (needs high − low ≥ 11). */
-function foldInto(p: number, low: number, high: number): number {
-  let x = p
-  while (x > high) x -= 12
-  while (x < low) x += 12
-  return x
-}
-
 /** The chord governing beat `t` (last chord whose span contains it). */
 function chordAt(chords: SongChord[], t: number): SongChord | null {
   let found: SongChord | null = null
@@ -107,10 +109,24 @@ function chordAt(chords: SongChord[], t: number): SongChord | null {
   return found
 }
 
-/** LH root pitch for a chord: the written slash bass when present, else the
- * root, voiced in the octave nearest the hand-written-arrangement anchor. */
-function lhRoot(c: SongChord): number {
+/** LH bass pitch for a chord: the written slash bass when present, else the
+ * root, voiced in the octave nearest the hand-written-arrangement anchor. The
+ * bass note is the BOTTOM of the left hand — the chord's own tones are voiced
+ * above it (see lhUpper). */
+function lhBass(c: SongChord): number {
   return nearestPitchInRange(c.b ?? c.r, LH_LOW, LH_ROOT_HIGH, LH_ANCHOR)
+}
+
+/** The upper LH tone over a bass note: the chord's fifth, or — when the bass IS
+ * the fifth (C/G) or the fifth will not fit the register — the chord's root.
+ * Both are ALWAYS measured from the chord root, never from a slash bass: C/E is
+ * still C–E–G, so its fifth is G, not the B a fifth above the E. */
+function lhUpper(c: SongChord, bass: number): number | null {
+  for (const pc of [pitchClass(c.r + fifthInterval(c.q)), pitchClass(c.r)]) {
+    const p = bass + pitchClass(pc - bass) // nearest instance at/above the bass
+    if (p !== bass && p <= LH_HIGH) return p
+  }
+  return null
 }
 
 /** Whole-beat grid inside a chord's span (chords start on whole beats; a
@@ -128,15 +144,15 @@ const note = (p: number, t: number, d: number, h: 'L' | 'R'): SongNote => ({ p, 
 function blockLeftHand(chords: SongChord[]): SongNote[] {
   const out: SongNote[] = []
   for (const c of chords) {
-    const root = lhRoot(c)
-    const fifth = foldInto(root + fifthInterval(c.q), LH_LOW, LH_HIGH)
-    out.push(note(root, c.t, c.d, 'L'))
-    if (fifth !== root) out.push(note(fifth, c.t, c.d, 'L'))
+    const bass = lhBass(c)
+    const upper = lhUpper(c, bass)
+    out.push(note(bass, c.t, c.d, 'L'))
+    if (upper !== null) out.push(note(upper, c.t, c.d, 'L'))
   }
   return out
 }
 
-// ── Level 2: LH root (heavy beats) / fifth (light beats) ────────────────────
+// ── Level 2: LH bass (heavy beats) / fifth (light beats) ────────────────────
 
 function walkingLeftHand(
   chords: SongChord[],
@@ -145,14 +161,14 @@ function walkingLeftHand(
 ): SongNote[] {
   const out: SongNote[] = []
   for (const c of chords) {
-    const root = lhRoot(c)
-    const fifth = foldInto(root + fifthInterval(c.q), LH_LOW, LH_HIGH)
+    const bass = lhBass(c)
+    const upper = lhUpper(c, bass)
     const grid = beatGrid(c)
     const chordEnd = c.t + c.d
     for (let j = 0; j < grid.length; j++) {
       const dur = j < grid.length - 1 ? grid[j + 1] - grid[j] : chordEnd - grid[j]
       const heavy = isHeavyBeat(grid[j], beatsPerBar, pickupBeats)
-      out.push(note(heavy ? root : fifth, grid[j], dur, 'L'))
+      out.push(note(heavy || upper === null ? bass : upper, grid[j], dur, 'L'))
     }
   }
   return out
@@ -160,17 +176,29 @@ function walkingLeftHand(
 
 // ── Level 2: alto voice ──────────────────────────────────────────────────────
 // For each melody note (skipping values shorter than half a beat — the alto
-// holds through those), pick the chord tone nearest below the soprano within
-// a third–sixth, never ≥ the soprano, floor C4, and never leaping more than a
-// fourth from the previous alto tone (otherwise the next-nearest candidate).
+// holds through those), pick the chord tone nearest below the soprano within a
+// third–sixth, floor C4. HARD rules: the alto is a chord tone, it never comes
+// closer than a minor third under the soprano (MIN_UNDER_MELODY) — including
+// while it is held through later melody notes — and it never sits above it.
+// The max-fourth leap is a SOFT target: when no candidate is within reach we
+// hold the previous tone (if it is still legal) or leave the alto silent for
+// that note rather than break a hard rule.
 
 function altoVoice(melody: SongNote[], chords: SongChord[]): SongNote[] {
   const out: SongNote[] = []
   let prevPitch: number | null = null
 
+  /** Is `p` a legal alto tone under melody note `m` for chord tones `pcs`? */
+  const legal = (p: number, m: SongNote, pcs: Set<number>) =>
+    p >= ALTO_FLOOR && p <= m.p - MIN_UNDER_MELODY && pcs.has(pitchClass(p))
+
+  /** Hold the previous alto tone through `m` — only when it stays legal under
+   * the NEW melody note (a held alto must never crowd or top the soprano). */
   const extendThrough = (m: SongNote) => {
     const last = out[out.length - 1]
-    if (last && Math.abs(last.t + last.d - m.t) < EPS) last.d += m.d
+    if (!last || Math.abs(last.t + last.d - m.t) >= EPS) return
+    if (last.p > m.p - MIN_UNDER_MELODY) return
+    last.d += m.d
   }
 
   for (const m of melody) {
@@ -186,14 +214,14 @@ function altoVoice(melody: SongNote[], chords: SongChord[]): SongNote[] {
     const pcs = new Set(chordPitchClasses(chord.r, chord.q))
 
     // Candidates ordered nearest-to-the-soprano first (highest first).
-    const hi = m.p - 3 // at least a third below
+    const hi = m.p - MIN_UNDER_MELODY // at least a third below
     const lo = Math.max(ALTO_FLOOR, m.p - 9) // at most a sixth below, floor C4
     const candidates: number[] = []
     for (let p = hi; p >= lo; p--) if (pcs.has(pitchClass(p))) candidates.push(p)
     if (candidates.length === 0) {
       // No chord tone in the window (melody close to the C4 floor): take the
-      // nearest chord tone below the soprano that still respects the floor.
-      for (let p = m.p - 1; p >= ALTO_FLOOR; p--) {
+      // nearest chord tone that still keeps a third to the soprano and the floor.
+      for (let p = hi; p >= ALTO_FLOOR; p--) {
         if (pcs.has(pitchClass(p))) {
           candidates.push(p)
           break
@@ -205,12 +233,21 @@ function altoVoice(melody: SongNote[], chords: SongChord[]): SongNote[] {
       continue
     }
 
-    const prev = prevPitch // break the pick → prevPitch inference cycle
-    const within: number | undefined =
+    const prev: number | null = prevPitch // break the pick → prevPitch inference cycle
+    const pick: number | undefined =
       prev === null ? candidates[0] : candidates.find((p) => Math.abs(p - prev) <= MAX_ALTO_LEAP)
-    const pick: number =
-      within ??
-      candidates.reduce((a, b) => (Math.abs(b - prev!) < Math.abs(a - prev!) ? b : a))
+
+    if (pick === undefined) {
+      // Every chord tone in reach would break the leap rule. Hold the previous
+      // tone when it is still legal here, otherwise stay silent for this note —
+      // never leap further than a fourth, never crowd the soprano.
+      if (prev !== null && legal(prev, m, pcs)) {
+        const last = out[out.length - 1]
+        if (last && Math.abs(last.t + last.d - m.t) < EPS && last.p === prev) last.d += m.d
+        else out.push(note(prev, m.t, m.d, 'R'))
+      }
+      continue
+    }
 
     out.push(note(pick, m.t, m.d, 'R'))
     prevPitch = pick
@@ -220,28 +257,67 @@ function altoVoice(melody: SongNote[], chords: SongChord[]): SongNote[] {
 
 // ── Level 3: gospel LH voicings + RH fill tones ──────────────────────────────
 
+/** Every octave placement of `p`'s pitch class inside [low, high], ordered by
+ * distance from `p` (nearest first; on a tie the LOWER octave wins). */
+function octaveOptions(p: number, low: number, high: number): number[] {
+  const out: number[] = []
+  for (let x = pitchClass(p); x <= high; x += 12) if (x >= low) out.push(x)
+  return out.sort((a, b) => Math.abs(a - p) - Math.abs(b - p) || a - b)
+}
+
 function gospelLeftHand(chords: SongChord[]): SongNote[] {
   const out: SongNote[] = []
   for (const c of chords) {
-    // Keep the voicing's pitch classes, move octaves into the LH register.
-    const folded = [...new Set(voicingHint(c, 4).map((p) => foldInto(p, LH_LOW, GOSPEL_HIGH)))]
-      .sort((a, b) => a - b)
-    for (const p of folded) out.push(note(p, c.t, c.d, 'L'))
+    // Keep the voicing's pitch classes, but choose the OCTAVE per voice: the
+    // nearest one that keeps a minor third to every voice already placed.
+    // Blind folding (foldInto) squeezed spread gospel voicings into semitone
+    // clusters; the 9th — pure colour — is dropped when it cannot fit.
+    const hint = voicingHint(c, 4)
+    const placed: number[] = []
+    hint.forEach((p, i) => {
+      const isNinth = i === hint.length - 1
+      const options = octaveOptions(p, LH_LOW, GOSPEL_HIGH)
+      if (options.length === 0) return
+      const clear = options.find((x) =>
+        placed.every((q) => Math.abs(x - q) >= MIN_VOICE_GAP),
+      )
+      if (clear !== undefined) {
+        placed.push(clear)
+        return
+      }
+      if (isNinth) return // colour tone: drop it rather than build a cluster
+      // A structural tone that collides everywhere: keep the most open octave.
+      const best = options.reduce((a, b) =>
+        Math.min(...placed.map((q) => Math.abs(b - q))) >
+        Math.min(...placed.map((q) => Math.abs(a - q)))
+          ? b
+          : a,
+      )
+      if (!placed.includes(best)) placed.push(best)
+    })
+    for (const p of [...placed].sort((a, b) => a - b)) out.push(note(p, c.t, c.d, 'L'))
   }
   return out
 }
 
-/** A fill tone (third or ninth of the chord) under the melody at chord changes
- * where the melody note lasts ≥ 2 beats. Held as long as the melody note. */
+/** A fill tone (the chord's characteristic third/fourth, or its ninth) under
+ * the melody at chord changes where the melody note lasts ≥ 2 beats. Held as
+ * long as the melody note. It must clear the gospel LH register (FILL_FLOOR)
+ * and keep a minor third to the melody — a fill a semitone under a held melody
+ * note is a clash, not a colour. */
 function gospelFills(melody: SongNote[], chords: SongChord[]): SongNote[] {
   const out: SongNote[] = []
   for (const c of chords) {
     const m = melody.find((n) => Math.abs(n.t - c.t) < EPS)
     if (!m || m.d < 2 - EPS) continue
-    const fillPcs = [pitchClass(c.r + thirdInterval(c.q)), pitchClass(c.r + 2)]
+    // chordPitchClasses spells the chord itself, so sus/power chords contribute
+    // their own characteristic tone instead of a third they do not have.
+    const chordPcs = chordPitchClasses(c.r, c.q)
+    const fillPcs = [chordPcs[1] ?? chordPcs[0], pitchClass(c.r + 2)]
+    const ceiling = m.p - MIN_UNDER_MELODY
     let best = -1
     for (const pc of fillPcs) {
-      for (let p = m.p - 1; p >= FILL_FLOOR; p--) {
+      for (let p = ceiling; p >= FILL_FLOOR; p--) {
         if (pitchClass(p) === pc) {
           if (p > best) best = p
           break
@@ -254,6 +330,21 @@ function gospelFills(melody: SongNote[], chords: SongChord[]): SongNote[] {
 }
 
 // ── Assembly ─────────────────────────────────────────────────────────────────
+
+/** The chord track AS THE LEFT HAND sees it: the left hand rests through the
+ * pickup (opptakt), exactly like the drum generator, so no accompaniment block
+ * sounds under the anacrusis. A chord straddling the pickup is trimmed to start
+ * on the first downbeat; chords that end inside the pickup are not played. */
+function leftHandChords(chords: SongChord[], pickupBeats: number): SongChord[] {
+  if (pickupBeats <= EPS) return chords
+  const out: SongChord[] = []
+  for (const c of chords) {
+    const end = c.t + c.d
+    if (end <= pickupBeats + EPS) continue
+    out.push(c.t >= pickupBeats - EPS ? c : { ...c, t: pickupBeats, d: end - pickupBeats })
+  }
+  return out
+}
 
 /** Stable note order — same convention as the hand-written seed files. */
 function sortNotes(notes: SongNote[]): SongNote[] {
@@ -272,21 +363,22 @@ export function generatePianoArrangement(source: SongSource, level: ArrangementL
   const src = validateSongSource(source)
   const melody = sortNotes(src.melody)
   const chords = [...src.chords].sort((a, b) => a.t - b.t)
+  const lhChords = leftHandChords(chords, src.pickupBeats)
 
   let notes: SongNote[]
   switch (level) {
     case 1:
-      notes = sortNotes([...melody, ...blockLeftHand(chords)])
+      notes = sortNotes([...melody, ...blockLeftHand(lhChords)])
       break
     case 2:
       notes = sortNotes([
         ...melody,
         ...altoVoice(melody, chords),
-        ...walkingLeftHand(chords, src.beatsPerBar, src.pickupBeats),
+        ...walkingLeftHand(lhChords, src.beatsPerBar, src.pickupBeats),
       ])
       break
     case 3:
-      notes = sortNotes([...melody, ...gospelFills(melody, chords), ...gospelLeftHand(chords)])
+      notes = sortNotes([...melody, ...gospelFills(melody, chords), ...gospelLeftHand(lhChords)])
       break
   }
 

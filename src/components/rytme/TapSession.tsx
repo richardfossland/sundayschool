@@ -60,6 +60,7 @@ export function TapSession({ exercise, level, onScore, onNewRhythm }: Props) {
 
   const [flash, setFlash] = useState(false)
   const cancelPreviewRef = useRef<(() => void) | null>(null)
+  const flashTimerRef = useRef<number | null>(null)
 
   const onScoreRef = useRef(onScore)
   onScoreRef.current = onScore
@@ -87,6 +88,7 @@ export function TapSession({ exercise, level, onScore, onNewRhythm }: Props) {
     installAudioUnlock()
     return () => {
       cancelPreviewRef.current?.()
+      if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current)
       getEngine().dispose()
     }
   }, [])
@@ -104,7 +106,11 @@ export function TapSession({ exercise, level, onScore, onNewRhythm }: Props) {
     void getEngine().playNote(38, 0.9, 0.3, 'drums')
     trainer.strike(SNARE_LANE)
     setFlash(true)
-    window.setTimeout(() => setFlash(false), 90)
+    if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = window.setTimeout(() => {
+      flashTimerRef.current = null
+      setFlash(false)
+    }, 90)
   }, [trainer])
 
   // Space bar also taps (accessibility + a natural drumming feel).
@@ -149,10 +155,20 @@ export function TapSession({ exercise, level, onScore, onNewRhythm }: Props) {
     cancelPreviewRef.current = () => ids.forEach((id) => clearTimeout(id))
   }
 
+  // "Ny rytme": the answer preview is a bare chain of setTimeouts, so it would
+  // keep tapping out the OLD rhythm over the new one. Kill it here rather than
+  // relying on a remount — the parent's key can repeat for short level-1 rhythms.
+  const newRhythm = () => {
+    cancelPreviewRef.current?.()
+    cancelPreviewRef.current = null
+    getEngine().stop()
+    onNewRhythm()
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Read: the rhythm as sheet music (one pitch). */}
-      <NotationSong doc={exercise.doc} follow />
+      {/* Read: the rhythm as sheet music (one pitch — treble staff only). */}
+      <NotationSong doc={exercise.doc} follow staves="treble" />
 
       {/* Tap surface */}
       <button
@@ -187,7 +203,7 @@ export function TapSession({ exercise, level, onScore, onNewRhythm }: Props) {
         </button>
         <button
           type="button"
-          onClick={onNewRhythm}
+          onClick={newRhythm}
           className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ivory)] transition-colors hover:bg-[var(--color-raised)]"
         >
           <RefreshCw className="h-4 w-4" /> Ny rytme
