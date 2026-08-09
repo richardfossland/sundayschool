@@ -11,6 +11,7 @@ import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useWaitMode } from '@/lib/useWaitMode'
 import { useChordMode } from '@/lib/useChordMode'
+import { useLoopWrap } from '@/lib/useBeatDriven'
 import type { ChordLevel } from '@/lib/chord-match'
 import { voicingOverlay } from '@/lib/voicing-hints'
 import type { Feedback } from '@/lib/useWaitMode'
@@ -51,7 +52,10 @@ export function SongPlayer({ song }: Props) {
   // Reactive transport/practice state (the engine writes some, the UI writes rest).
   const isPlaying = usePlayer((s) => s.isPlaying)
   const isLoading = usePlayer((s) => s.isLoading)
-  const currentBeat = usePlayer((s) => s.currentBeat)
+  // NB: `currentBeat` is deliberately NOT selected here. Subscribing to it would
+  // re-render this whole tree ~60×/s during playback. The views that need the
+  // play-head (Keyboard, ChordStrip, SectionNav, the canvases) read it
+  // themselves — see lib/useBeatDriven.
   const bpm = usePlayer((s) => s.bpm)
   const targetKey = usePlayer((s) => s.targetKey)
   const hand = usePlayer((s) => s.hand)
@@ -202,17 +206,8 @@ export function SongPlayer({ song }: Props) {
   }, [waitMode])
 
   // Record a completed pass when the loop wraps back to the top during playback.
-  const prevBeatRef = useRef(0)
-  useEffect(() => {
-    if (!isPlaying) {
-      prevBeatRef.current = currentBeat
-      return
-    }
-    if (currentBeat < prevBeatRef.current - 0.5) {
-      recordPractice(progressKey, bpmRef.current)
-    }
-    prevBeatRef.current = currentBeat
-  }, [currentBeat, isPlaying, progressKey])
+  // Watched imperatively (no render per beat).
+  useLoopWrap(() => recordPractice(progressKey, bpmRef.current))
 
   // MIDI cleanup on unmount / reconnect.
   useEffect(() => () => midi?.dispose(), [midi])
@@ -269,8 +264,8 @@ export function SongPlayer({ song }: Props) {
     [doc, hand],
   )
   // Suppress note-based highlighting in both trainers (they drive the keyboard
-  // via `expected`/`feedback` instead).
-  const keyboardBeat = chordMode || waitMode ? -1 : currentBeat
+  // via `expected`/`feedback` instead). `undefined` = follow the transport live.
+  const keyboardBeat = chordMode || waitMode ? -1 : undefined
 
   // In besifringsmodus the held grip is outlined, and a match/mismatch flashes
   // every held key green/red; a voicing hint dots the suggested notes.
@@ -287,12 +282,15 @@ export function SongPlayer({ song }: Props) {
     chordMode && chord.currentChord ? voicingOverlay(chord.currentChord, chord.level) : undefined
 
   const chordBeat = chord.currentBeat ?? 0
-  const stripBeat = chordMode ? chordBeat : waitMode ? (wait.currentStepBeat ?? 0) : currentBeat
+  // undefined = the strip/section chips follow the live transport themselves.
+  const stripBeat = chordMode ? chordBeat : waitMode ? (wait.currentStepBeat ?? 0) : undefined
 
   return (
     <div className="flex flex-col gap-4">
-      {/* MIDI status */}
-      <div className="flex items-center justify-between gap-3">
+      {/* MIDI status. flex-wrap: at 375px the three toggles pushed the row past
+          the viewport and the whole PAGE scrolled sideways (GuitarPlayer's
+          equivalent row already wraps). */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-[var(--color-muted)]">
           {midi ? (
             <span className="inline-flex items-center gap-1.5 text-[var(--color-sea)]">
@@ -302,7 +300,7 @@ export function SongPlayer({ song }: Props) {
             'Bruk skjermklaviaturet — eller koble til et MIDI-keyboard'
           )}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setChordMode((v) => !v)}
             aria-pressed={chordMode}
@@ -414,7 +412,7 @@ export function SongPlayer({ song }: Props) {
                   onClick={() => chord.setLevel(level)}
                   aria-pressed={chord.level === level}
                   className={cn(
-                    'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                    'min-h-11 rounded-lg border px-3 text-sm font-medium transition-colors',
                     chord.level === level
                       ? 'border-[var(--color-amber)] bg-[var(--color-amber)] text-[var(--color-ink-on-amber)]'
                       : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-ivory)] hover:border-[var(--color-amber)]/50',
@@ -427,14 +425,14 @@ export function SongPlayer({ song }: Props) {
           </div>
           <div className="flex items-start gap-2">
             <span className="mt-1.5 w-16 shrink-0 text-sm text-[var(--color-muted)]">Toneart</span>
-            <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+            <div className="grid flex-1 grid-cols-4 gap-1.5 sm:grid-cols-6 md:grid-cols-12">
               {KEY_NAMES.map((name, k) => (
                 <button
                   key={k}
                   onClick={() => onKey(k)}
                   aria-pressed={targetKey === k}
                   className={cn(
-                    'rounded-lg border py-1.5 text-sm font-medium tabular-nums transition-colors',
+                    'min-h-11 min-w-11 rounded-lg border px-1 text-sm font-medium tabular-nums transition-colors',
                     targetKey === k
                       ? 'border-[var(--color-amber)] bg-[var(--color-amber)] text-[var(--color-ink-on-amber)]'
                       : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-ivory)] hover:border-[var(--color-amber)]/50',

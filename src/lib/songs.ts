@@ -1,6 +1,4 @@
 import type { Song, SongMeta, SeedSong } from '@/types/song'
-import { seedSongs } from '@/data/songs'
-import { createClient } from './supabase/client'
 
 // ── Song data loader ─────────────────────────────────────────────────────────
 // Same shape as SundayLicks' lib/licks.ts, adapted to full songs. Reads the
@@ -9,11 +7,32 @@ import { createClient } from './supabase/client'
 // library so the app is always functional in dev and degrades gracefully in
 // production. Listing never loads the heavy `doc` column — only the single-song
 // fetch does.
+//
+// ── Why the seed import is DYNAMIC ───────────────────────────────────────────
+// `@/data/songs` runs the arranger over the whole authored library: ~326 kB raw
+// (79 kB gz) of note data, in the browser, at import time. A static import put
+// all of it in the first load of every route that so much as listed song TITLES
+// — the library pages, the setlist builder — even when Supabase answered and the
+// seeds were never touched. It is now loaded ON THE FALLBACK PATH ONLY, so a
+// configured production app never downloads it, and dev/degraded still work.
+// The old synchronous `FALLBACK_META` / `FALLBACK_SONGS` exports are gone; on
+// the server, import `seedSongs` from '@/data/songs' directly.
 
 // Every library-metadata column EXCEPT the heavy `doc` jsonb. Kept in sync with
 // the SongMeta type (= Omit<Song, 'doc'>).
 const META_COLUMNS =
   'id, slug, work_slug, variant_label, title, subtitle, tradition, difficulty, original_key, mode, default_bpm, arrangement_style, rights, tags, status, created_at'
+
+// The Supabase browser SDK is ~63 kB gz. Loaded on demand — and never at all
+// when the env is not configured (the NEXT_PUBLIC_ reads are inlined at build
+// time, so an unconfigured build never reaches the import).
+async function getSupabase() {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return null
+  }
+  const { createClient } = await import('./supabase/client')
+  return createClient()
+}
 
 /** Synthesise a full Song from an authored SeedSong (DB supplies id/status in
  * production; here we mint stable stand-ins). */
@@ -28,8 +47,20 @@ function toMeta(song: Song): SongMeta {
   return meta
 }
 
-export const FALLBACK_SONGS: Song[] = seedSongs.map(seedToSong)
-export const FALLBACK_META: SongMeta[] = FALLBACK_SONGS.map(toMeta)
+// The seed library, materialised at most once per session and only if some
+// fallback path actually asks for it.
+let seedPromise: Promise<Song[]> | null = null
+
+function fallbackSongs(): Promise<Song[]> {
+  if (!seedPromise) {
+    seedPromise = import('@/data/songs').then((m) => m.seedSongs.map(seedToSong))
+  }
+  return seedPromise
+}
+
+async function fallbackMeta(): Promise<SongMeta[]> {
+  return (await fallbackSongs()).map(toMeta)
+}
 
 // ── Session caches ───────────────────────────────────────────────────────────
 // Both caches share one rule: a DEGRADED answer (network/API error, or an empty
@@ -43,8 +74,8 @@ let metaCache: SongMeta[] | null = null
 let metaInFlight: Promise<SongMeta[]> | null = null
 
 async function loadMeta(): Promise<{ metas: SongMeta[]; degraded: boolean }> {
-  const supabase = createClient()
-  if (!supabase) return { metas: FALLBACK_META, degraded: false } // no env: stable
+  const supabase = await getSupabase()
+  if (!supabase) return { metas: await fallbackMeta(), degraded: false } // no env: stable
   try {
     const { data, error } = await supabase
       .from('songs')
@@ -52,10 +83,10 @@ async function loadMeta(): Promise<{ metas: SongMeta[]; degraded: boolean }> {
       .eq('status', 'published')
       .order('difficulty', { ascending: true })
       .order('title', { ascending: true })
-    if (error || !data || data.length === 0) return { metas: FALLBACK_META, degraded: true }
+    if (error || !data || data.length === 0) return { metas: await fallbackMeta(), degraded: true }
     return { metas: data as unknown as SongMeta[], degraded: false }
   } catch {
-    return { metas: FALLBACK_META, degraded: true }
+    return { metas: await fallbackMeta(), degraded: true }
   }
 }
 
@@ -86,9 +117,10 @@ export async function fetchSongs(): Promise<SongMeta[]> {
 const songCache = new Map<string, Promise<Song | null>>()
 
 async function loadSong(slug: string): Promise<{ song: Song | null; degraded: boolean }> {
-  const fallback = FALLBACK_SONGS.find((s) => s.slug === slug) ?? null
-  const supabase = createClient()
-  if (!supabase) return { song: fallback, degraded: false } // no env: stable
+  // Resolved lazily so the happy path never pulls the seed library in.
+  const fallback = async () => (await fallbackSongs()).find((s) => s.slug === slug) ?? null
+  const supabase = await getSupabase()
+  if (!supabase) return { song: await fallback(), degraded: false } // no env: stable
   try {
     const { data, error } = await supabase
       .from('songs')
@@ -96,11 +128,11 @@ async function loadSong(slug: string): Promise<{ song: Song | null; degraded: bo
       .eq('slug', slug)
       .eq('status', 'published')
       .maybeSingle()
-    if (error) return { song: fallback, degraded: true }
-    if (!data) return { song: fallback, degraded: false } // genuinely not published
+    if (error) return { song: await fallback(), degraded: true }
+    if (!data) return { song: await fallback(), degraded: false } // genuinely not published
     return { song: data as unknown as Song, degraded: false }
   } catch {
-    return { song: fallback, degraded: true }
+    return { song: await fallback(), degraded: true }
   }
 }
 

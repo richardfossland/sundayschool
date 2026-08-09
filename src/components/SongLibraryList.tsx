@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2, Music4, Search } from 'lucide-react'
 import type { SongMeta, Tradition, Difficulty } from '@/types/song'
-import { FALLBACK_META, fetchSongs } from '@/lib/songs'
+import { fetchSongs } from '@/lib/songs'
 import { getProgress, type Progress } from '@/lib/progress'
 import { NOTE_NAMES } from '@/lib/music'
 import {
@@ -78,7 +78,11 @@ function DifficultyDots({ level }: { level: Difficulty }) {
 }
 
 export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
-  const [songs, setSongs] = useState<SongMeta[]>(FALLBACK_META)
+  // Empty until fetchSongs answers. Seeding this from the bundled seed library
+  // meant every visitor downloaded ~79 kB gz of note data to see a list of
+  // titles — the seeds are now a fallback path inside lib/songs, not a bundle.
+  const [songs, setSongs] = useState<SongMeta[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
@@ -92,7 +96,9 @@ export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
   useEffect(() => {
     let alive = true
     fetchSongs().then((rows) => {
-      if (alive) setSongs(rows)
+      if (!alive) return
+      setSongs(rows)
+      setLoaded(true)
     })
     setProgress(getProgress())
     return () => {
@@ -190,8 +196,23 @@ export function SongLibraryList({ hrefBase }: { hrefBase: string }) {
         </p>
       )}
 
-      {/* Grid / empty state */}
-      {songs.length === 0 ? (
+      {/* Grid / empty state. "Innhold på vei" is only honest once the fetch has
+          ANSWERED — before that the list is merely not loaded yet. */}
+      {!loaded ? (
+        <div
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          aria-busy="true"
+          aria-label="Laster biblioteket"
+        >
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              aria-hidden
+              className="h-40 animate-pulse rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+            />
+          ))}
+        </div>
+      ) : songs.length === 0 ? (
         <EmptyState
           title="Innhold på vei"
           body="Biblioteket fylles snart med salmer, hymner, spirituals og gospel."
@@ -263,7 +284,12 @@ function WorkCard({
         {keyLabel(group)}
       </span>
       <span aria-hidden className="h-3 w-px bg-[var(--color-border)]" />
-      <span>{group.default_bpm} BPM</span>
+      {/* Tempo differs between levels on some works (84 enkel / 76 firstemmig),
+          so show the span rather than passing off one level's number as the
+          work's — see WorkGroup.bpmRange. */}
+      <span>
+        {group.bpmRange ? `${group.bpmRange[0]}–${group.bpmRange[1]}` : group.default_bpm} BPM
+      </span>
     </div>
   )
 

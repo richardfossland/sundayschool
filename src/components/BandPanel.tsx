@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Users, Volume2, VolumeX } from 'lucide-react'
 import { usePlayer } from '@/lib/store'
 import type { InstrumentId } from '@/lib/instruments'
@@ -34,7 +34,10 @@ interface Props {
   own: InstrumentId
 }
 
-export function BandPanel({ own }: Props) {
+// Memoised: `own` is a constant string per fag, so once the orchestrator above
+// stops re-rendering per beat this panel is only re-rendered by its OWN store
+// subscriptions (bandMode / bandMix).
+export const BandPanel = memo(function BandPanel({ own }: Props) {
   const bandMode = usePlayer((s) => s.bandMode)
   const bandMix = usePlayer((s) => s.bandMix)
   const [muted, setMuted] = useState<Partial<Record<InstrumentId, boolean>>>({})
@@ -161,4 +164,4 @@ export function BandPanel({ own }: Props) {
       )}
     </div>
   )
-}
+})

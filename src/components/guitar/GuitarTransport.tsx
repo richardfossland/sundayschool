@@ -97,7 +97,8 @@ export function GuitarTransport(p: Props) {
             step={1}
             value={p.bpm}
             onChange={(e) => p.onBpm(Number(e.target.value))}
-            className="h-2 flex-1 cursor-pointer accent-[var(--fag-gitar)]"
+            className="h-11 flex-1 cursor-pointer accent-[var(--fag-gitar)]"
+            style={{ touchAction: 'pan-y' }}
             aria-label="Tempo (BPM)"
           />
           <span className="w-20 shrink-0 text-right font-display text-lg tabular-nums">
@@ -110,14 +111,14 @@ export function GuitarTransport(p: Props) {
       {/* Row 2: key grid — the SOUNDING key */}
       <div className="flex items-start gap-2">
         <span className="mt-1.5 w-16 shrink-0 text-sm text-[var(--color-muted)]">Toneart</span>
-        <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+        <div className="grid flex-1 grid-cols-4 gap-1.5 sm:grid-cols-6 md:grid-cols-12">
           {KEY_NAMES.map((name, k) => (
             <button
               key={k}
               onClick={() => p.onKey(k)}
               aria-pressed={p.targetKey === k}
               className={cn(
-                'rounded-lg border py-1.5 text-sm font-medium tabular-nums transition-colors',
+                'min-h-11 min-w-11 rounded-lg border px-1 text-sm font-medium tabular-nums transition-colors',
                 p.targetKey === k
                   ? 'border-[var(--fag-gitar)] bg-[var(--fag-gitar)] text-[var(--color-ink-on-amber)]'
                   : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-ivory)] hover:border-[var(--fag-gitar)]/50',

@@ -70,7 +70,8 @@ export function DrumTransport(p: Props) {
             step={1}
             value={p.bpm}
             onChange={(e) => p.onBpm(Number(e.target.value))}
-            className="h-2 flex-1 cursor-pointer accent-[var(--color-amber)]"
+            className="h-11 flex-1 cursor-pointer accent-[var(--color-amber)]"
+            style={{ touchAction: 'pan-y' }}
             aria-label="Tempo (BPM)"
           />
           <span className="w-20 shrink-0 text-right font-display text-lg tabular-nums">

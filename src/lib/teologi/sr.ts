@@ -101,11 +101,14 @@ export function loadSr(): SrState {
   }
 }
 
-export function saveSr(state: SrState): void {
-  if (typeof window === 'undefined') return
+/** Persist the review state. Returns false when the write was refused (private
+ * mode, full storage, blocked cookies) rather than failing silently. */
+export function saveSr(state: SrState): boolean {
+  if (typeof window === 'undefined') return false
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    return true
   } catch {
-    /* storage full / blocked — ignore */
+    return false
   }
 }

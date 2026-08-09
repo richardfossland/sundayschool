@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SlidersHorizontal } from 'lucide-react'
 import { LessonShell, LessonSection } from '@/components/teori/LessonShell'
-import { MikserSim } from '@/components/lydteknikk/MikserSim'
+import { MikserSimLazy } from '@/components/lydteknikk/MikserSimLazy'
 import { LessonComplete } from '@/components/lydteknikk/LessonComplete'
 import { LESSONS, lessonIndex } from '../lessons'
 
@@ -81,7 +81,7 @@ const BODIES: Record<string, () => React.ReactNode> = {
         </p>
       </LessonSection>
 
-      <MikserSim />
+      <MikserSimLazy />
 
       <LessonSection title="Sikt på sunt headroom">
         <p>
@@ -159,7 +159,7 @@ const BODIES: Record<string, () => React.ReactNode> = {
         </p>
       </LessonSection>
 
-      <MikserSim />
+      <MikserSimLazy />
 
       <LessonSection title="Videre">
         <p>
@@ -228,7 +228,7 @@ const BODIES: Record<string, () => React.ReactNode> = {
         </p>
       </LessonSection>
 
-      <MikserSim />
+      <MikserSimLazy />
 
       <LessonSection title="Videre">
         <p>

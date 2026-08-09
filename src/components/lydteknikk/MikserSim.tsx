@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Tone from 'tone'
 import { Play, Square, Speaker, Headphones } from 'lucide-react'
 import { ensureAudioRunning, installAudioUnlock } from '@/lib/audio-unlock'
@@ -75,6 +75,24 @@ const BANDS = [
   { key: 'high' as const, type: 'highshelf' as const, freq: 5000, q: 0.7, label: 'Topp' },
 ]
 
+/** One meter frame: per-channel peaks, the master peak, and the held clip lamp. */
+interface MeterFrame {
+  ch: number[]
+  master: number
+  clip: boolean
+}
+
+/** Paint a peak level (0..1) into a meter's fill element. Imperative on
+ * purpose — this runs 30×/s and must never touch React. */
+function paintFill(el: HTMLDivElement | null, level: number, clip: boolean) {
+  if (!el) return
+  const pct = Math.min(100, Math.max(0, level * 100))
+  // Green below ~70%, amber toward the top, red past ~92% (approaching clip).
+  const color = pct > 92 ? 'var(--color-danger)' : pct > 70 ? 'var(--color-amber)' : 'var(--color-sea)'
+  el.style.height = `${pct}%`
+  el.style.backgroundColor = clip ? 'var(--color-danger)' : color
+}
+
 interface EqState {
   low: number
   mid: number
@@ -130,15 +148,29 @@ export function MikserSim() {
   const [channels, setChannels] = useState<ChannelState[]>(() =>
     DEFAULT_CHANNELS.map((c) => ({ ...c, eq: { ...c.eq } })),
   )
-  // Meters: per-channel + master peak (0..1) and the held clip lamp.
-  const [meters, setMeters] = useState<{ ch: number[]; master: number; clip: boolean }>({
-    ch: [0, 0, 0],
-    master: 0,
-    clip: false,
-  })
+
+  // Meters are NOT React state. They move ~30×/s, and every frame used to
+  // re-render the whole desk (three channel strips + master + EQ curves). The
+  // levels are written straight to the DOM through these refs instead — the
+  // rendered tree only changes when the learner touches something.
+  const chFillRefs = useRef<Array<HTMLDivElement | null>>([])
+  const masterFillRef = useRef<HTMLDivElement | null>(null)
+  const clipLampRef = useRef<HTMLSpanElement | null>(null)
+  const clipTextRef = useRef<HTMLSpanElement | null>(null)
 
   const graphRef = useRef<Graph | null>(null)
   const clipUntilRef = useRef(0)
+
+  const paintMeters = useCallback((m: MeterFrame) => {
+    for (let i = 0; i < m.ch.length; i++) paintFill(chFillRefs.current[i], m.ch[i], false)
+    paintFill(masterFillRef.current, m.master, m.clip)
+    const lamp = clipLampRef.current
+    if (lamp) {
+      lamp.style.backgroundColor = m.clip ? 'var(--color-danger)' : 'var(--color-border)'
+      lamp.style.boxShadow = m.clip ? '0 0 10px 2px var(--color-danger)' : 'none'
+    }
+    if (clipTextRef.current) clipTextRef.current.textContent = m.clip ? 'CLIP' : 'OK'
+  }, [])
 
   useEffect(() => {
     setMounted(true)
@@ -164,7 +196,7 @@ export function MikserSim() {
       const graph = buildGraph(ctx, drumBuffers, channels, master, monMaster, listen)
       graphRef.current = graph
       startScheduler(graph)
-      startMeters(graph, clipUntilRef, setMeters)
+      startMeters(graph, clipUntilRef, paintMeters)
       setRunning(true)
     } catch (e) {
       setError('Klarte ikke å starte lyd. Prøv igjen, eller sjekk at nettleseren tillater lyd.')
@@ -180,8 +212,9 @@ export function MikserSim() {
   function stop() {
     teardown(graphRef.current)
     graphRef.current = null
+    clipUntilRef.current = 0
     setRunning(false)
-    setMeters({ ch: [0, 0, 0], master: 0, clip: false })
+    paintMeters({ ch: [0, 0, 0], master: 0, clip: false })
   }
 
   // ── Live parameter updates (state + AudioParam together) ────────────────────
@@ -271,17 +304,17 @@ export function MikserSim() {
           />
         </div>
 
-        {/* Clip lamp */}
+        {/* Clip lamp — painted imperatively (see paintMeters). */}
         <div className="ml-auto inline-flex items-center gap-2 text-xs font-medium text-[var(--color-muted)]">
           <span
+            ref={clipLampRef}
             aria-hidden
             className="h-3 w-3 rounded-full transition-colors"
-            style={{
-              backgroundColor: meters.clip ? 'var(--color-danger)' : 'var(--color-border)',
-              boxShadow: meters.clip ? '0 0 10px 2px var(--color-danger)' : 'none',
-            }}
+            style={{ backgroundColor: 'var(--color-border)' }}
           />
-          {meters.clip ? 'CLIP' : 'OK'}
+          <span ref={clipTextRef} aria-live="polite">
+            OK
+          </span>
         </div>
       </div>
 
@@ -298,7 +331,9 @@ export function MikserSim() {
             key={cfg.id}
             cfg={cfg}
             state={channels[i]}
-            level={meters.ch[i]}
+            meterRef={(el) => {
+              chFillRefs.current[i] = el
+            }}
             onFader={(db) => updateFader(i, db)}
             onMonSend={(db) => updateMonSend(i, db)}
             onEq={(band, db) => updateEq(i, band, db)}
@@ -307,8 +342,7 @@ export function MikserSim() {
         <MasterStrip
           master={master}
           monMaster={monMaster}
-          level={meters.master}
-          clip={meters.clip}
+          meterRef={masterFillRef}
           onMaster={updateMaster}
           onMonMaster={updateMonMaster}
         />
@@ -357,20 +391,20 @@ function ListenButton({
 function ChannelStrip({
   cfg,
   state,
-  level,
+  meterRef,
   onFader,
   onMonSend,
   onEq,
 }: {
   cfg: ChannelCfg
   state: ChannelState
-  level: number
+  meterRef: MeterRef
   onFader: (db: number) => void
   onMonSend: (db: number) => void
   onEq: (band: keyof EqState, db: number) => void
 }) {
   return (
-    <div className="flex min-w-[132px] flex-col items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-raised)] p-3">
+    <div className="flex min-w-[152px] flex-col items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-raised)] p-3">
       <div className="text-center">
         <p className="font-display text-sm text-[var(--color-ivory)]">{cfg.label}</p>
         <p className="text-[10px] text-[var(--color-muted)]">{cfg.hint}</p>
@@ -390,8 +424,10 @@ function ChannelStrip({
               step={1}
               value={state.eq[b.key]}
               onChange={(e) => onEq(b.key, Number(e.target.value))}
-              className="h-1.5 flex-1 cursor-pointer"
-              style={{ accentColor: 'var(--fag)' }}
+              // 24px-tall touch target (was 6px). touch-action: none so the
+              // drag is NOT stolen by the horizontal scroller these strips sit in.
+              className="h-6 flex-1 cursor-pointer"
+              style={{ accentColor: 'var(--fag)', touchAction: 'none' }}
               aria-label={`${cfg.label} EQ ${b.label}`}
             />
             <span className="w-8 shrink-0 text-right tabular-nums text-[var(--color-ivory)]">
@@ -404,7 +440,7 @@ function ChannelStrip({
 
       {/* Fader + meter */}
       <div className="mt-1 flex items-end gap-2">
-        <Meter level={level} />
+        <Meter fillRef={meterRef} />
         <div className="flex flex-col items-center">
           <input
             type="range"
@@ -413,8 +449,15 @@ function ChannelStrip({
             step={1}
             value={state.faderDb}
             onChange={(e) => onFader(Number(e.target.value))}
-            className="h-32 cursor-pointer"
-            style={{ writingMode: 'vertical-lr', direction: 'rtl', accentColor: 'var(--fag)' }}
+            // w-11: 44px-wide touch column around the thin vertical track (the
+            // extra width is transparent). Was 16px — undraggable with a thumb.
+            className="h-32 w-11 cursor-pointer"
+            style={{
+              writingMode: 'vertical-lr',
+              direction: 'rtl',
+              accentColor: 'var(--fag)',
+              touchAction: 'none',
+            }}
             aria-label={`${cfg.label} fader`}
           />
           <span className="mt-1 tabular-nums text-[10px] text-[var(--color-ivory)]">
@@ -433,8 +476,8 @@ function ChannelStrip({
           step={1}
           value={state.monSendDb}
           onChange={(e) => onMonSend(Number(e.target.value))}
-          className="h-1.5 flex-1 cursor-pointer"
-          style={{ accentColor: 'var(--fag)' }}
+          className="h-6 flex-1 cursor-pointer"
+          style={{ accentColor: 'var(--fag)', touchAction: 'none' }}
           aria-label={`${cfg.label} monitor-send`}
         />
       </label>
@@ -445,21 +488,19 @@ function ChannelStrip({
 function MasterStrip({
   master,
   monMaster,
-  level,
-  clip,
+  meterRef,
   onMaster,
   onMonMaster,
 }: {
   master: number
   monMaster: number
-  level: number
-  clip: boolean
+  meterRef: MeterRef
   onMaster: (db: number) => void
   onMonMaster: (db: number) => void
 }) {
   return (
     <div
-      className="flex min-w-[132px] flex-col items-center gap-2 rounded-xl border p-3"
+      className="flex min-w-[152px] flex-col items-center gap-2 rounded-xl border p-3"
       style={{
         borderColor: 'color-mix(in srgb, var(--fag) 45%, transparent)',
         backgroundColor: 'color-mix(in srgb, var(--fag) 8%, var(--color-raised))',
@@ -471,7 +512,7 @@ function MasterStrip({
       </div>
 
       <div className="mt-1 flex items-end gap-2">
-        <Meter level={level} tall clip={clip} />
+        <Meter fillRef={meterRef} tall />
         <div className="flex flex-col items-center">
           <input
             type="range"
@@ -480,8 +521,13 @@ function MasterStrip({
             step={1}
             value={master}
             onChange={(e) => onMaster(Number(e.target.value))}
-            className="h-40 cursor-pointer"
-            style={{ writingMode: 'vertical-lr', direction: 'rtl', accentColor: 'var(--fag)' }}
+            className="h-40 w-11 cursor-pointer"
+            style={{
+              writingMode: 'vertical-lr',
+              direction: 'rtl',
+              accentColor: 'var(--fag)',
+              touchAction: 'none',
+            }}
             aria-label="Sal-master fader"
           />
           <span className="mt-1 tabular-nums text-[10px] text-[var(--color-ivory)]">
@@ -499,8 +545,8 @@ function MasterStrip({
           step={1}
           value={monMaster}
           onChange={(e) => onMonMaster(Number(e.target.value))}
-          className="h-1.5 flex-1 cursor-pointer"
-          style={{ accentColor: 'var(--fag)' }}
+          className="h-6 flex-1 cursor-pointer"
+          style={{ accentColor: 'var(--fag)', touchAction: 'none' }}
           aria-label="Monitor-master fader"
         />
       </label>
@@ -508,11 +554,12 @@ function MasterStrip({
   )
 }
 
-/** A vertical peak meter. `level` is 0..1 linear peak. */
-function Meter({ level, tall, clip }: { level: number; tall?: boolean; clip?: boolean }) {
-  const pct = Math.min(100, Math.max(0, level * 100))
-  // Green below ~70%, amber toward the top, red past ~92% (approaching clip).
-  const color = pct > 92 ? 'var(--color-danger)' : pct > 70 ? 'var(--color-amber)' : 'var(--color-sea)'
+/** Ref to a meter's fill element — either a callback or a React ref object. */
+type MeterRef = React.Ref<HTMLDivElement>
+
+/** A vertical peak meter. It renders ONCE; the level is written into the fill
+ * element by paintMeters, 30×/s, without React. */
+function Meter({ fillRef, tall }: { fillRef: MeterRef; tall?: boolean }) {
   return (
     <div
       className={cn(
@@ -521,8 +568,9 @@ function Meter({ level, tall, clip }: { level: number; tall?: boolean; clip?: bo
       )}
     >
       <div
+        ref={fillRef}
         className="absolute bottom-0 left-0 right-0 transition-[height] duration-75"
-        style={{ height: `${pct}%`, backgroundColor: clip ? 'var(--color-danger)' : color }}
+        style={{ height: '0%', backgroundColor: 'var(--color-sea)' }}
       />
     </div>
   )
@@ -762,8 +810,8 @@ function trackSource(graph: Graph, src: AudioScheduledSourceNode) {
 
 function startMeters(
   graph: Graph,
-  clipUntilRef: React.MutableRefObject<number>,
-  setMeters: (m: { ch: number[]; master: number; clip: boolean }) => void,
+  clipUntilRef: React.RefObject<number>,
+  paint: (m: MeterFrame) => void,
 ) {
   const chBufs = graph.channels.map((c) => new Float32Array(c.meter.fftSize))
   const mBuf = new Float32Array(graph.masterMeter.fftSize)
@@ -790,7 +838,7 @@ function startMeters(
     if (mPeak > 0.99) clipUntilRef.current = ts + 1400 // hold the clip lamp
     const clip = ts < clipUntilRef.current
 
-    setMeters({ ch, master: mSmooth, clip })
+    paint({ ch, master: mSmooth, clip })
   }
   graph.raf = requestAnimationFrame(frame)
 }

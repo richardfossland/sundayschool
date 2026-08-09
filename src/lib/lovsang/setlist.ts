@@ -297,12 +297,24 @@ export function loadSetlists(): Setlist[] {
   }
 }
 
-function persist(lists: Setlist[]) {
+/** Skriv til lageret. Returnerer false når skrivingen ble avvist — privat
+ * modus i Safari, fullt lager, eller blokkerte informasjonskapsler. Kallerne
+ * SKAL si fra: en lagring som feiler i stillhet er en tapt setliste. */
+function persist(lists: Setlist[]): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(lists))
+    return true
   } catch {
-    /* full/blokkert lager — ignorer */
+    return false // full/blokkert lager — kalleren varsler
   }
+}
+
+/** True hvis SISTE skriveforsøk gikk gjennom. */
+let lastWriteOk = true
+
+/** Om siste lagring lyktes. Les den rett etter saveSetlist/deleteSetlist. */
+export function lastSaveSucceeded(): boolean {
+  return lastWriteOk
 }
 
 /** Lagre (sett inn/erstatt) en setliste med ferskt tidsstempel. Returnerer hele
@@ -310,13 +322,13 @@ function persist(lists: Setlist[]) {
 export function saveSetlist(setlist: Setlist): Setlist[] {
   const stamped: Setlist = { ...setlist, updatedAt: Date.now() }
   const next = upsertSetlist(loadSetlists(), stamped)
-  persist(next)
+  lastWriteOk = persist(next)
   return next
 }
 
 /** Slett en setliste på id. Returnerer hele det oppdaterte settet. */
 export function deleteSetlist(id: string): Setlist[] {
   const next = removeSetlist(loadSetlists(), id)
-  persist(next)
+  lastWriteOk = persist(next)
   return next
 }

@@ -29,7 +29,15 @@ export interface WorkGroup {
   tradition: Tradition
   original_key: number
   mode: Mode
+  /** The lowest-difficulty variant's tempo. Do NOT show this alone when
+   * `bpmRange` is set — see below. */
   default_bpm: number
+  /** [min, max] tempo across the variants, ONLY when they disagree (null when
+   * every variant shares one tempo). Tempo is the one representative field that
+   * genuinely differs between levels — Amazing Grace is 84 BPM enkel but 76
+   * firstemmig — so quoting the lowest level's number as the work's tempo told
+   * the reader something false about the arrangement they were about to open. */
+  bpmRange: [number, number] | null
   /** Union of every variant's tags — used for search + category filtering so a
    * work matches if ANY of its arrangements carries the tag. */
   tags: string[]
@@ -85,6 +93,9 @@ export function groupWorks(metas: SongMeta[]): WorkGroup[] {
     const rep = sorted[0]
     const tags = [...new Set(sorted.flatMap((r) => r.tags))]
     const difficulties = [...new Set(sorted.map((r) => r.difficulty))].sort((a, b) => a - b)
+    const bpms = sorted.map((r) => r.default_bpm)
+    const bpmMin = Math.min(...bpms)
+    const bpmMax = Math.max(...bpms)
     groups.push({
       work_slug,
       title: rep.title,
@@ -93,6 +104,7 @@ export function groupWorks(metas: SongMeta[]): WorkGroup[] {
       original_key: rep.original_key,
       mode: rep.mode,
       default_bpm: rep.default_bpm,
+      bpmRange: bpmMin === bpmMax ? null : [bpmMin, bpmMax],
       tags,
       variants: sorted.map((r) => ({
         slug: r.slug,

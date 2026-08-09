@@ -4,7 +4,7 @@ import { SubjectCard } from '@/components/SubjectCard'
 import { ContinueLearning } from '@/components/ContinueLearning'
 import { ChurchSeasonHint, type SeasonHintData } from '@/components/ChurchSeasonHint'
 import { SUBJECTS } from '@/lib/subjects'
-import { FALLBACK_META } from '@/lib/songs'
+import { seedSongs } from '@/data/songs'
 import { ALL_PATTERNS } from '@/data/grooves'
 import { LESSONS } from './lydteknikk/lessons'
 import { seasonsInOrder, seasonColorParts } from '@/lib/teologi/content'
@@ -19,8 +19,10 @@ import { seasonsInOrder, seasonColorParts } from '@/lib/teologi/content'
 
 // slug → title / id → label maps, built server-side so the client "Fortsett"
 // section can name songs and grooves without importing their heavy data.
+// This is a SERVER component, so reading the seed library here costs the client
+// nothing — only the resulting slug→title strings cross the boundary.
 const songTitles: Record<string, string> = Object.fromEntries(
-  FALLBACK_META.map((m) => [m.slug, m.title]),
+  seedSongs.map((s) => [s.slug, s.title]),
 )
 const grooveTitles: Record<string, string> = Object.fromEntries(
   ALL_PATTERNS.map((g) => [g.id, g.label]),

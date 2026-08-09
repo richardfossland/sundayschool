@@ -5,8 +5,7 @@ import { Mic, Plus, ListMusic, ChevronRight } from 'lucide-react'
 import type { SongMeta } from '@/types/song'
 import { AppShell } from '@/components/AppShell'
 import { SetlistBuilder, type WorkOption } from '@/components/lovsang/SetlistBuilder'
-import { FALLBACK_META, fetchSongs } from '@/lib/songs'
-import { installAudioUnlock } from '@/lib/audio-unlock'
+import { fetchSongs } from '@/lib/songs'
 import {
   analyzeSetlist,
   createSetlist,
@@ -51,13 +50,18 @@ function toWorkOptions(metas: SongMeta[]): WorkOption[] {
 
 export default function LovsangPage() {
   const [setlists, setSetlists] = useState<Setlist[]>([])
-  const [works, setWorks] = useState<WorkOption[]>(() => toWorkOptions(FALLBACK_META))
+  // Starts empty and is filled by fetchSongs: seeding it from the bundled seed
+  // library meant shipping every arrangement's `doc` to the browser just to
+  // render a list of titles. See lib/songs.
+  const [works, setWorks] = useState<WorkOption[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   // En ny, ennå ikke lagret liste holdes her til den lagres første gang.
   const [draft, setDraft] = useState<Setlist | null>(null)
 
   useEffect(() => {
-    installAudioUnlock()
+    // Dynamic: audio-unlock imports Tone, and this page must not pay for it
+    // before the learner opens something that actually makes a sound.
+    void import('@/lib/audio-unlock').then((m) => m.installAudioUnlock())
     setSetlists(loadSetlists())
     let alive = true
     fetchSongs().then((rows) => {

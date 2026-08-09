@@ -88,11 +88,15 @@ export function getProgress(): Progress {
   }
 }
 
-function save(p: Progress) {
+/** Write the store. Returns false when the write was refused (private mode,
+ * full storage, blocked cookies) so callers can tell the learner instead of
+ * losing their progress in silence. */
+function save(p: Progress): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(p))
+    return true
   } catch {
-    /* storage full / blocked — ignore */
+    return false
   }
 }
 

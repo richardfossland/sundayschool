@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
@@ -34,52 +34,82 @@ const MORE_LINKS: { href: string; label: string }[] = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = useState(false)
+  const moreButtonRef = useRef<HTMLButtonElement>(null)
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
   const moreActive = MORE_LINKS.some((l) => isActive(l.href))
+
+  // Escape closes the menu and puts focus back on the trigger — otherwise a
+  // keyboard user who dismisses it lands at the top of the document.
+  useEffect(() => {
+    if (!moreOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      setMoreOpen(false)
+      moreButtonRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [moreOpen])
 
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[var(--color-scene)]/95 backdrop-blur supports-[backdrop-filter]:bg-[var(--color-scene)]/80">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          {/* The wordmark's TEXT is hidden below sm — it ate ~120px of a 375px
+              topbar and squeezed the six subjects into a 113px sliver. The ♪
+              badge stays as the home affordance; the accessible name does too. */}
           <Link
             href="/"
+            aria-label="SundaySchool — forsiden"
             className="flex shrink-0 items-center gap-2 font-display text-lg text-[var(--color-amber)] sm:text-xl"
           >
             <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full bg-[var(--color-amber)]/15 text-sm">
               ♪
             </span>
-            SundaySchool
+            <span aria-hidden className="hidden sm:inline">
+              SundaySchool
+            </span>
           </Link>
 
-          <nav
-            aria-label="Fag"
-            className="scroll-x -mx-1 flex min-w-0 flex-1 items-center gap-1 px-1 sm:gap-1.5"
-          >
-            {PRIMARY.map((item) => {
-              const active = isActive(item.href)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  style={active ? { color: item.accent } : undefined}
-                  className={cn(
-                    'shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors sm:px-3.5',
-                    active
-                      ? 'bg-[var(--color-surface)]'
-                      : 'text-[var(--color-muted)] hover:text-[var(--color-ivory)]',
-                  )}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
+          {/* A fade on the right edge signals "there is more, scroll me" — the
+              row otherwise cut off mid-word with no affordance at all. */}
+          <div className="relative min-w-0 flex-1">
+            <nav
+              aria-label="Fag"
+              className="scroll-x -mx-1 flex items-center gap-1 px-1 pr-6 sm:gap-1.5"
+            >
+              {PRIMARY.map((item) => {
+                const active = isActive(item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? 'page' : undefined}
+                    style={active ? { color: item.accent } : undefined}
+                    className={cn(
+                      'shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors sm:px-3.5',
+                      active
+                        ? 'bg-[var(--color-surface)]'
+                        : 'text-[var(--color-muted)] hover:text-[var(--color-ivory)]',
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[var(--color-scene)] to-transparent"
+            />
+          </div>
 
           {/* Mer-dropdown */}
           <div className="relative shrink-0">
             <button
+              ref={moreButtonRef}
               type="button"
               onClick={() => setMoreOpen((o) => !o)}
               aria-expanded={moreOpen}

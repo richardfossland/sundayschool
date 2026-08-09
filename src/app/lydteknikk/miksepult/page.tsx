@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft, SlidersHorizontal } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
-import { MikserSim } from '@/components/lydteknikk/MikserSim'
+import { MikserSimLazy } from '@/components/lydteknikk/MikserSimLazy'
 
 // ── /lydteknikk/miksepult ─────────────────────────────────────────────────────
 // The standalone mixing desk — the same MikserSim used inside the lessons, on
@@ -49,7 +49,7 @@ export default function MiksepultPage() {
           </p>
         </header>
 
-        <MikserSim />
+        <MikserSimLazy />
 
         <p className="mt-6 text-sm text-[var(--color-muted)]">
           Vil du ha forklaringene bak knappene? Gå gjennom{' '}

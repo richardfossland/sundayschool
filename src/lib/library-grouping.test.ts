@@ -124,6 +124,27 @@ describe('groupWorks', () => {
     expect(titles[0]).toBe('Amazing Grace')
   })
 
+  it('reports a bpm range when the variants disagree on tempo', () => {
+    // Amazing Grace is 84 BPM enkel but 76 firstemmig — quoting the lowest
+    // level's tempo as "the work's" tempo was a lie on the card.
+    const dsWithTempi = [
+      { ...graceEnkel, default_bpm: 84 },
+      { ...graceFirstemmig, default_bpm: 76 },
+      { ...graceGospel, default_bpm: 80 },
+      swingLow,
+    ]
+    const grace = groupWorks(dsWithTempi).find((g) => g.work_slug === 'amazing-grace')!
+    expect(grace.bpmRange).toEqual([76, 84])
+    // The representative field still points at the lowest-difficulty variant.
+    expect(grace.default_bpm).toBe(84)
+  })
+
+  it('leaves bpmRange null when every variant shares one tempo', () => {
+    const grace = groupWorks(dataset).find((g) => g.work_slug === 'amazing-grace')!
+    expect(grace.bpmRange).toBeNull()
+    expect(groupWorks(dataset).find((g) => g.work_slug === 'swing-low')!.bpmRange).toBeNull()
+  })
+
   it('keeps a single-variant work as one variant with a null label', () => {
     const swing = groupWorks(dataset).find((g) => g.work_slug === 'swing-low')!
     expect(swing.variants).toHaveLength(1)

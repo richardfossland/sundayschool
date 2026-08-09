@@ -10,6 +10,7 @@ import { nearestOffset, transposeDoc } from '@/lib/transpose'
 import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useWaitMode } from '@/lib/useWaitMode'
+import { useLoopWrap } from '@/lib/useBeatDriven'
 import { generateBassline, type BassLevel } from '@/lib/bass/bassline'
 import { bandTracks, applyBandMix } from '@/lib/band'
 import { BASS_EADG, bestPosition, type FretPosition } from '@/lib/fretboard-geometry'
@@ -42,7 +43,8 @@ interface Props {
 export function BassPlayer({ song }: Props) {
   const isPlaying = usePlayer((s) => s.isPlaying)
   const isLoading = usePlayer((s) => s.isLoading)
-  const currentBeat = usePlayer((s) => s.currentBeat)
+  // `currentBeat` is NOT selected here — the fretboard, chord strip and section
+  // chips read the play-head themselves. See lib/useBeatDriven.
   const bpm = usePlayer((s) => s.bpm)
   const targetKey = usePlayer((s) => s.targetKey)
   const loop = usePlayer((s) => s.loop)
@@ -191,18 +193,9 @@ export function BassPlayer({ song }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waitMode])
 
-  // Record a completed pass when the loop wraps back during playback.
-  const prevBeatRef = useRef(0)
-  useEffect(() => {
-    if (!isPlaying) {
-      prevBeatRef.current = currentBeat
-      return
-    }
-    if (currentBeat < prevBeatRef.current - 0.5) {
-      recordPractice(progressKey, bpmRef.current)
-    }
-    prevBeatRef.current = currentBeat
-  }, [currentBeat, isPlaying, progressKey])
+  // Record a completed pass when the loop wraps back during playback
+  // (imperative — no render per beat).
+  useLoopWrap(() => recordPractice(progressKey, bpmRef.current))
 
   useEffect(() => () => midi?.dispose(), [midi])
 
@@ -248,14 +241,11 @@ export function BassPlayer({ song }: Props) {
     }
   }
 
-  // Fretboard state: sounding positions during playback; expected positions in
-  // wait-mode (the generated positions at the frozen step beat).
-  const activePositions = useMemo<FretPosition[]>(() => {
-    if (waitMode || !isPlaying) return []
-    return positions
-      .filter((n) => n.beat - EPS <= currentBeat && currentBeat < n.beat + n.durBeats - EPS)
-      .map((n) => ({ string: n.string, fret: n.fret }))
-  }, [positions, currentBeat, isPlaying, waitMode])
+  // Fretboard state: the glow follows the transport INSIDE the board (it takes
+  // the beat-stamped notes and subscribes itself), so this orchestrator does not
+  // re-render per note. Handing it `undefined` clears the glow — wait-mode paints
+  // via `expected`, and a stopped transport must not leave a key lit.
+  const liveNotes = waitMode || !isPlaying ? undefined : positions
 
   const expectedPositions = useMemo<FretPosition[]>(() => {
     if (!waitMode || wait.currentStepBeat == null) return []
@@ -264,7 +254,8 @@ export function BassPlayer({ song }: Props) {
       .map((n) => ({ string: n.string, fret: n.fret }))
   }, [positions, waitMode, wait.currentStepBeat])
 
-  const stripBeat = waitMode ? (wait.currentStepBeat ?? 0) : currentBeat
+  // undefined = the strip / section chips follow the live transport themselves.
+  const stripBeat = waitMode ? (wait.currentStepBeat ?? 0) : undefined
 
   return (
     <div className="flex flex-col gap-4">
@@ -304,7 +295,7 @@ export function BassPlayer({ song }: Props) {
           onPress={(m) => inputRef.current(m)}
           expected={expectedPositions}
           feedback={waitMode ? wait.feedback : undefined}
-          active={activePositions}
+          liveNotes={liveNotes}
         />
       </div>
 

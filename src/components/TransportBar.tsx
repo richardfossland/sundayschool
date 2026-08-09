@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Play, Square, Repeat, Loader2, Timer, Hash, Piano } from 'lucide-react'
 import type { HandFilter } from '@/types/song'
 import { KEY_NAMES } from '@/lib/music'
@@ -37,7 +38,9 @@ const HANDS: { id: HandFilter; label: string }[] = [
   { id: 'R', label: 'Høyre' },
 ]
 
-export function TransportBar(p: Props) {
+// Memoised so a re-render of the orchestrator for an unrelated reason (a chord
+// change, a MIDI connect) does not repaint the whole control surface.
+export const TransportBar = memo(function TransportBar(p: Props) {
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       {/* Row 1: play + loop + wait-mode + tempo */}
@@ -94,7 +97,11 @@ export function TransportBar(p: Props) {
             step={1}
             value={p.bpm}
             onChange={(e) => p.onBpm(Number(e.target.value))}
-            className="h-2 flex-1 cursor-pointer accent-[var(--color-amber)]"
+            // h-11: a 44px-tall touch target around a visually thin track (the
+            // native track stays centred). touch-action: pan-y lets a vertical
+            // swipe still scroll the page while a horizontal drag sets tempo.
+            className="h-11 flex-1 cursor-pointer accent-[var(--color-amber)]"
+            style={{ touchAction: 'pan-y' }}
             aria-label="Tempo (BPM)"
           />
           <span className="w-20 shrink-0 text-right font-display text-lg tabular-nums">
@@ -146,7 +153,7 @@ export function TransportBar(p: Props) {
               onClick={() => p.onHand(h.id)}
               aria-pressed={p.hand === h.id}
               className={cn(
-                'rounded-full border px-4 py-1.5 text-sm font-medium transition-colors',
+                'min-h-11 rounded-full border px-4 text-sm font-medium transition-colors',
                 p.hand === h.id
                   ? h.id === 'R'
                     ? 'border-[var(--color-amber)] bg-[var(--color-amber)]/15 text-[var(--color-amber)]'
@@ -165,14 +172,16 @@ export function TransportBar(p: Props) {
       {/* Row 4: key grid */}
       <div className="flex items-start gap-2">
         <span className="mt-1.5 w-16 shrink-0 text-sm text-[var(--color-muted)]">Toneart</span>
-        <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+        {/* 12-across only from md: at sm the cells were 22px wide. Cells are
+            44px tall (min-h-11) so every key is a real touch target. */}
+        <div className="grid flex-1 grid-cols-4 gap-1.5 sm:grid-cols-6 md:grid-cols-12">
           {KEY_NAMES.map((name, k) => (
             <button
               key={k}
               onClick={() => p.onKey(k)}
               aria-pressed={p.targetKey === k}
               className={cn(
-                'rounded-lg border py-1.5 text-sm font-medium tabular-nums transition-colors',
+                'min-h-11 min-w-11 rounded-lg border px-1 text-sm font-medium tabular-nums transition-colors',
                 p.targetKey === k
                   ? 'border-[var(--color-amber)] bg-[var(--color-amber)] text-[var(--color-ink-on-amber)]'
                   : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-ivory)] hover:border-[var(--color-amber)]/50',
@@ -185,4 +194,4 @@ export function TransportBar(p: Props) {
       </div>
     </div>
   )
-}
+})

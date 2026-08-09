@@ -5,15 +5,43 @@ import type { SongNote } from '@/types/song'
 import type { Feedback } from '@/lib/useWaitMode'
 import { keyboardLayout, padToC } from '@/lib/keyboard-geometry'
 import { pitchClass, noteName } from '@/lib/music'
+import { useBeatValue } from '@/lib/useBeatDriven'
 import { cn } from '@/lib/cn'
 
 // The on-screen keyboard. Geometry comes from the shared `keyboardLayout` helper
 // (same source the falling-notes canvas uses), so the two always line up. Fixed
 // range C2–C7 for full songs. Keys light in their hand's colour while sounding,
 // show wait-mode targets/feedback, and can carry a chord-tone overlay.
+//
+// The play-head is read HERE, not passed down: omit `currentBeat` and the
+// keyboard subscribes to the transport itself (useBeatValue), re-rendering only
+// when the set of sounding keys actually changes. The orchestrator above it
+// therefore never re-renders per beat — see lib/useBeatDriven.
 
 const HIT = '#6BD08A'
 const EPS = 1e-6
+
+type ActiveMap = Map<number, 'L' | 'R'>
+
+/** Which keys sound at `beat`, and in which hand's colour. */
+function activeAt(notes: SongNote[], beat: number): ActiveMap {
+  const m: ActiveMap = new Map()
+  if (beat < 0) return m
+  for (const n of notes) {
+    if (n.t - EPS <= beat && beat < n.t + n.d - EPS) {
+      if (n.h === 'R' || !m.has(n.p)) m.set(n.p, n.h)
+    }
+  }
+  return m
+}
+
+const EMPTY_ACTIVE: ActiveMap = new Map()
+
+function sameActive(a: ActiveMap, b: ActiveMap): boolean {
+  if (a.size !== b.size) return false
+  for (const [p, h] of a) if (b.get(p) !== h) return false
+  return true
+}
 
 const WHITE_H = 160
 const BLACK_H = 96
@@ -21,9 +49,11 @@ const BLACK_H = 96
 interface Props {
   /** Transposed notes (both hands, or hand-filtered by the caller). */
   notes: SongNote[]
-  /** Time source. Pass a negative value to suppress sounding highlights
-   * (e.g. in wait-mode, where the picture is driven by `expected` instead). */
-  currentBeat: number
+  /** Time source. OMIT it to follow the live transport (the keyboard subscribes
+   * itself, so the parent does not re-render per beat). Pass a number to drive
+   * the picture from somewhere else, or a negative value to suppress sounding
+   * highlights entirely (wait-/chord-mode paint via `expected`/`feedback`). */
+  currentBeat?: number
   /** Wait-mode: pitches the player should hit right now (outlined). */
   expected?: Set<number>
   /** Wait-mode: transient hit/miss feedback per pressed key. */
@@ -58,16 +88,19 @@ export function Keyboard({
     return keyboardLayout(lo, hi, whiteKeyWidth)
   }, [lowMidi, highMidi, whiteKeyWidth])
 
-  const active = useMemo(() => {
-    const m = new Map<number, 'L' | 'R'>()
-    if (currentBeat < 0) return m
-    for (const n of notes) {
-      if (n.t - EPS <= currentBeat && currentBeat < n.t + n.d - EPS) {
-        if (n.h === 'R' || !m.has(n.p)) m.set(n.p, n.h)
-      }
-    }
-    return m
-  }, [notes, currentBeat])
+  // Live path: subscribe to the transport ourselves and re-render only when the
+  // sounding set changes. Driven path (`currentBeat` given): plain derivation.
+  const driven = currentBeat !== undefined
+  const liveActive = useBeatValue(
+    (beat) => (driven ? EMPTY_ACTIVE : activeAt(notes, beat)),
+    [notes, driven],
+    { isEqual: sameActive },
+  )
+  const drivenActive = useMemo(
+    () => (currentBeat === undefined ? EMPTY_ACTIVE : activeAt(notes, currentBeat)),
+    [notes, currentBeat],
+  )
+  const active = driven ? drivenActive : liveActive
 
   const overlayDot = (m: number, black: boolean) => {
     if (!overlay || !overlay.tones.has(pitchClass(m))) return null

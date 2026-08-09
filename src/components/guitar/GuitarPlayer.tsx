@@ -11,6 +11,7 @@ import { chordSymbol } from '@/lib/spelling'
 import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useChordMode } from '@/lib/useChordMode'
+import { useBeatValue, useLoopWrap } from '@/lib/useBeatDriven'
 import { shapesAtCapo } from '@/lib/guitar/capo'
 import { defaultPatternFor, patternById, strumEvents } from '@/lib/guitar/strumming'
 import { bandTracks, applyBandMix } from '@/lib/band'
@@ -44,7 +45,9 @@ interface Props {
 export function GuitarPlayer({ song }: Props) {
   const isPlaying = usePlayer((s) => s.isPlaying)
   const isLoading = usePlayer((s) => s.isLoading)
-  const currentBeat = usePlayer((s) => s.currentBeat)
+  // `currentBeat` is NOT selected here — see SongPlayer / lib/useBeatDriven. The
+  // only beat-derived value this orchestrator needs is the ACTIVE CHORD INDEX
+  // (for the grip diagrams), and that changes once per chord, not per frame.
   const bpm = usePlayer((s) => s.bpm)
   const targetKey = usePlayer((s) => s.targetKey)
   const loop = usePlayer((s) => s.loop)
@@ -186,16 +189,9 @@ export function GuitarPlayer({ song }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [practice])
 
-  // Record a completed pass when the loop wraps during playback.
-  const prevBeatRef = useRef(0)
-  useEffect(() => {
-    if (!isPlaying) {
-      prevBeatRef.current = currentBeat
-      return
-    }
-    if (currentBeat < prevBeatRef.current - 0.5) recordPractice(progressKey, bpmRef.current)
-    prevBeatRef.current = currentBeat
-  }, [currentBeat, isPlaying, progressKey])
+  // Record a completed pass when the loop wraps during playback (imperative —
+  // no render per beat).
+  useLoopWrap(() => recordPractice(progressKey, bpmRef.current))
 
   // MIDI cleanup on unmount / reconnect.
   useEffect(() => () => midi?.dispose(), [midi])
@@ -250,17 +246,25 @@ export function GuitarPlayer({ song }: Props) {
   }
 
   // Active/next chord (index space shared by doc.chords / playedChords / shapes).
-  const playbackIdx = useMemo(() => {
-    let idx = -1
-    doc.chords.forEach((c, i) => {
-      if (c.t <= currentBeat + EPS && currentBeat < c.t + c.d - EPS) idx = i
-    })
-    return idx
-  }, [doc, currentBeat])
+  // Read from the transport WITHOUT subscribing to every beat: this re-renders
+  // once per chord change, which is what the grip diagrams actually need.
+  const playbackIdx = useBeatValue(
+    (beat) => {
+      if (practice) return -1
+      let idx = -1
+      doc.chords.forEach((c, i) => {
+        if (c.t <= beat + EPS && beat < c.t + c.d - EPS) idx = i
+      })
+      return idx
+    },
+    [doc, practice],
+  )
   const activeIdx = practice ? chord.index : playbackIdx
   const nextIdx = activeIdx >= 0 && activeIdx + 1 < playedChords.length ? activeIdx + 1 : -1
 
-  const stripBeat = practice ? (chord.currentBeat ?? 0) : currentBeat
+  // undefined = the chord sheet / strip / section chips follow the transport
+  // themselves.
+  const stripBeat = practice ? (chord.currentBeat ?? 0) : undefined
 
   // Falling-canvas width tracks the container (diagrams sit beside it).
   const fallRef = useRef<HTMLDivElement>(null)

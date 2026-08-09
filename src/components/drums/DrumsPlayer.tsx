@@ -35,7 +35,9 @@ interface Props {
 export function DrumsPlayer({ song }: Props) {
   const isPlaying = usePlayer((s) => s.isPlaying)
   const isLoading = usePlayer((s) => s.isLoading)
-  const currentBeat = usePlayer((s) => s.currentBeat)
+  // `currentBeat` is NOT selected here — SectionNav follows the play-head on its
+  // own, so the lanes/pads/transport are not re-rendered per frame. See
+  // lib/useBeatDriven.
   const bpm = usePlayer((s) => s.bpm)
   const loop = usePlayer((s) => s.loop)
   const metronome = usePlayer((s) => s.metronome)
@@ -211,7 +213,6 @@ export function DrumsPlayer({ song }: Props) {
 
       <SectionNav
         sections={doc.sections}
-        currentBeat={currentBeat}
         loop={loop}
         onSelect={onSelectSection}
         onLoop={onLoopSection}

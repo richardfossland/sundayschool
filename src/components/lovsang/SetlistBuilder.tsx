@@ -21,6 +21,7 @@ import {
   analyzeSetlist,
   createSetlist,
   entryMode,
+  lastSaveSucceeded,
   moveEntry,
   removeEntryAt,
   setEntryKey,
@@ -28,8 +29,8 @@ import {
   type Setlist,
   type SetlistEntry,
 } from '@/lib/lovsang/setlist'
-import { GiTonen } from './GiTonen'
-import { IntroTrening } from './IntroTrening'
+import { GiTonenLazy } from './GiTonenLazy'
+import { IntroTreningLazy } from './IntroTreningLazy'
 
 // ── SetlistBuilder ────────────────────────────────────────────────────────────
 // Redigerer én setliste: velg verk fra biblioteket (gruppert på work_slug),
@@ -129,8 +130,14 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
     )
   }, [works, query])
 
+  // Lagring kan bli avvist (privat modus, fullt lager, blokkerte
+  // informasjonskapsler). Da MÅ det synes: setlista lever ellers bare i minnet
+  // til fanen lukkes, og lederen tror den er trygg.
+  const [saveFailed, setSaveFailed] = useState(false)
+
   const save = () => {
     onSave(createSetlist(name.trim() || 'Uten navn', entries, initial.id, Date.now()))
+    setSaveFailed(!lastSaveSucceeded())
   }
 
   const add = (w: WorkOption) => {
@@ -168,8 +175,8 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
             {keyLabel(entry.targetKey, entryMode(entry))}
           </p>
           <div className="mt-4 flex flex-col gap-3">
-            <GiTonen song={songs[entry.workSlug] ?? null} targetKey={entry.targetKey} />
-            <IntroTrening
+            <GiTonenLazy song={songs[entry.workSlug] ?? null} targetKey={entry.targetKey} />
+            <IntroTreningLazy
               song={songs[entry.workSlug] ?? null}
               workSlug={entry.workSlug}
               targetKey={entry.targetKey}
@@ -231,6 +238,16 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
           </button>
         </div>
       </div>
+
+      {saveFailed && (
+        <p
+          role="status"
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm text-[var(--color-danger)]"
+        >
+          Kunne ikke lagre på denne enheten — setlista finnes bare i denne fanen.
+          Privat nettlesing eller blokkerte informasjonskapsler hindrer lagring.
+        </p>
+      )}
 
       <div>
         <label htmlFor="setlist-name" className="text-xs font-medium uppercase tracking-wider text-[var(--color-muted)]">
@@ -326,6 +343,7 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
                       </IconButton>
                       <IconButton
                         label="Fjern innslag"
+                        danger
                         onClick={() => setEntries((e) => removeEntryAt(e, i))}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -338,7 +356,9 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
                     <span className="mt-1.5 w-16 shrink-0 text-sm text-[var(--color-muted)]">
                       Toneart
                     </span>
-                    <div className="grid flex-1 grid-cols-6 gap-1.5 sm:grid-cols-12">
+                    {/* 12-across only from md: at sm the cells fell to ~35px.
+                        min-h-11 gives every key a 44px-tall touch target. */}
+                    <div className="grid flex-1 grid-cols-4 gap-1.5 sm:grid-cols-6 md:grid-cols-12">
                       {KEY_NAMES.map((n, k) => (
                         <button
                           key={k}
@@ -346,7 +366,7 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
                           onClick={() => setEntries((e) => setEntryKey(e, i, k))}
                           aria-pressed={entry.targetKey === k}
                           className={cn(
-                            'rounded-lg border py-1.5 text-sm font-medium tabular-nums transition-colors',
+                            'min-h-11 min-w-11 rounded-lg border px-1 text-sm font-medium tabular-nums transition-colors',
                             entry.targetKey === k
                               ? 'text-[var(--color-scene)]'
                               : 'border-[var(--color-border)] bg-[var(--color-raised)] text-[var(--color-ivory)]',
@@ -364,8 +384,8 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
                   </div>
 
                   <div className="mt-4 flex flex-col gap-3">
-                    <GiTonen song={songs[entry.workSlug] ?? null} targetKey={entry.targetKey} />
-                    <IntroTrening
+                    <GiTonenLazy song={songs[entry.workSlug] ?? null} targetKey={entry.targetKey} />
+                    <IntroTreningLazy
                       song={songs[entry.workSlug] ?? null}
                       workSlug={entry.workSlug}
                       targetKey={entry.targetKey}
@@ -473,15 +493,21 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
   )
 }
 
+/** A 44×44 touch target around a 32×32 visual button: the padding is
+ * transparent, so the look is unchanged but the hit area meets the guideline.
+ * `danger` also pushes destructive actions away from their neighbour — «Fjern»
+ * sat 4px from «Flytt ned». */
 function IconButton({
   label,
   onClick,
   disabled,
+  danger,
   children,
 }: {
   label: string
   onClick: () => void
   disabled?: boolean
+  danger?: boolean
   children: React.ReactNode
 }) {
   return (
@@ -491,9 +517,20 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--color-border)] text-[var(--color-muted)] transition-colors hover:text-[var(--color-ivory)] disabled:opacity-30"
+      className={cn(
+        'grid h-11 w-11 place-items-center rounded-lg disabled:opacity-30',
+        danger && 'ml-2',
+      )}
     >
-      {children}
+      <span
+        aria-hidden
+        className={cn(
+          'grid h-8 w-8 place-items-center rounded-lg border border-[var(--color-border)] text-[var(--color-muted)] transition-colors',
+          danger ? 'hover:text-[var(--color-danger)]' : 'hover:text-[var(--color-ivory)]',
+        )}
+      >
+        {children}
+      </span>
     </button>
   )
 }

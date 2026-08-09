@@ -7,6 +7,8 @@ import {
   fretboardLayout,
   type FretPosition,
 } from '@/lib/fretboard-geometry'
+import type { FretLaneNote } from '@/lib/fretboard-renderer'
+import { useBeatValue } from '@/lib/useBeatDriven'
 import { noteName } from '@/lib/music'
 
 // The interactive fretboard panel — the bass sibling of Keyboard.tsx. Strings
@@ -29,6 +31,25 @@ const COLORS = {
   expected: 'var(--color-amber, #EBB84B)',
 }
 
+const EMPTY_KEYS: ReadonlySet<string> = new Set()
+const EPS = 1e-6
+
+/** The `string:fret` keys sounding at `beat`. */
+function soundingKeys(notes: FretLaneNote[] | undefined, beat: number): ReadonlySet<string> {
+  if (!notes || notes.length === 0) return EMPTY_KEYS
+  const out = new Set<string>()
+  for (const n of notes) {
+    if (n.beat - EPS <= beat && beat < n.beat + n.durBeats - EPS) out.add(`${n.string}:${n.fret}`)
+  }
+  return out
+}
+
+function sameKeys(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const k of a) if (!b.has(k)) return false
+  return true
+}
+
 interface Props {
   /** Play/route a note (engine bass sample + wait-mode input). */
   onPress: (midi: number) => void
@@ -36,17 +57,34 @@ interface Props {
   expected?: FretPosition[]
   /** Wait-mode: transient hit/miss feedback, keyed by MIDI pitch. */
   feedback?: Map<number, Feedback>
-  /** Positions currently sounding during playback (filled dots). */
+  /** Positions currently sounding during playback (filled dots). Pass this to
+   * drive the glow explicitly. */
   active?: FretPosition[]
+  /** Beat-stamped notes to derive the glow from, read LIVE off the transport.
+   * Preferred over `active`: the board re-renders when the sounding positions
+   * change instead of forcing the parent to re-render every frame. Pass
+   * `undefined` (stopped, wait-mode) to clear the glow. */
+  liveNotes?: FretLaneNote[]
   tuning?: number[]
 }
 
-export function Fretboard({ onPress, expected, feedback, active, tuning = BASS_EADG }: Props) {
+export function Fretboard({
+  onPress,
+  expected,
+  feedback,
+  active,
+  liveNotes,
+  tuning = BASS_EADG,
+}: Props) {
   const layout = useMemo(() => fretboardLayout(tuning, FRETS, BOARD_W, H), [tuning])
 
   const posKey = (p: FretPosition) => `${p.string}:${p.fret}`
   const expectedSet = useMemo(() => new Set((expected ?? []).map(posKey)), [expected])
-  const activeSet = useMemo(() => new Set((active ?? []).map(posKey)), [active])
+  const liveSet = useBeatValue((beat) => soundingKeys(liveNotes, beat), [liveNotes], {
+    isEqual: sameKeys,
+  })
+  const explicitSet = useMemo(() => (active ? new Set(active.map(posKey)) : null), [active])
+  const activeSet = explicitSet ?? liveSet
 
   // A cell's dot centre, in the gutter-shifted coordinate space.
   const dotAt = (s: number, f: number) => {

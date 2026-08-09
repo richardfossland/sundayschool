@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { LessonShell, LessonSection } from '@/components/teori/LessonShell'
-import { IntervalDemo } from '@/components/teori/IntervalDemo'
-import { ChordBuilder } from '@/components/teori/ChordBuilder'
+import { IntervalDemoLazy } from '@/components/teori/IntervalDemoLazy'
+import { ChordBuilderLazy } from '@/components/teori/ChordBuilderLazy'
 import { CircleOfFifths } from '@/components/teori/CircleOfFifths'
 import { LESSONS, lessonIndex } from '../lessons'
 
@@ -47,7 +47,7 @@ const BODIES: Record<string, () => React.ReactNode> = {
         </p>
       </LessonSection>
 
-      <IntervalDemo />
+      <IntervalDemoLazy />
 
       <LessonSection title="Intervaller i salmene">
         <p>
@@ -97,7 +97,7 @@ const BODIES: Record<string, () => React.ReactNode> = {
         <p>Bygg akkordene selv under — velg grunntone og kvalitet, se tonene og lytt.</p>
       </LessonSection>
 
-      <ChordBuilder />
+      <ChordBuilderLazy />
 
       <LessonSection title="Funksjoner: I, IV og V">
         <p>

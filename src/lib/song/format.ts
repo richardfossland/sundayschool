@@ -1,16 +1,27 @@
 import { z } from 'zod'
-import type { SeedSong, SongDoc } from '@/types/song'
+import type { Mode, SeedSong, SongDoc } from '@/types/song'
 import type { SongSource } from '@/types/song-source'
+// Eksplisitt .ts-endelse: fila er i seed-scriptets import-graf (Node
+// type-stripping krever fulle stier). spelling.ts importerer kun music.ts, som
+// ikke importerer noe — ingen sirkulær avhengighet tilbake hit.
+import { parseKeySignature } from '../spelling.ts'
 
 // ── SongDoc validation ──────────────────────────────────────────────────────
 // The zod schema is the single gatekeeper for song content: the seed script
 // validates every curated song against it before upsert, and the local MIDI
 // importer (fase 2) validates its generated docs the same way. Structural
 // invariants that zod can't express declaratively live in `docInvariants`.
+//
+// Every object schema here is `.strict()`. A non-strict zod object SILENTLY
+// STRIPS unknown keys, so `schema.parse(song)` returns a lossy copy: add a
+// field to a song file (or to a generated arrangement) without adding it to the
+// schema and the row written to the DB would quietly differ from the bundled
+// object the app falls back to — two "correct" layers disagreeing at the seam.
+// Strict turns that into a loud parse error at seed/test time instead.
 
 const handSchema = z.enum(['L', 'R'])
 
-export const songNoteSchema = z.object({
+export const songNoteSchema = z.strictObject({
   p: z.number().int().min(21).max(108), // piano range A0–C8
   t: z.number().min(0),
   d: z.number().positive(),
@@ -20,7 +31,7 @@ export const songNoteSchema = z.object({
   finger: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
 })
 
-export const songChordSchema = z.object({
+export const songChordSchema = z.strictObject({
   t: z.number().min(0),
   d: z.number().positive(),
   r: z.number().int().min(0).max(11),
@@ -28,7 +39,7 @@ export const songChordSchema = z.object({
   b: z.number().int().min(0).max(11).optional(),
 })
 
-export const songSectionSchema = z.object({
+export const songSectionSchema = z.strictObject({
   id: z.string().min(1).max(16),
   kind: z.enum(['intro', 'verse', 'refrain', 'chorus', 'bridge', 'ending']),
   label: z.string().min(1).max(40),
@@ -36,7 +47,7 @@ export const songSectionSchema = z.object({
   endBeat: z.number().positive(),
 })
 
-export const songDocSchema = z.object({
+export const songDocSchema = z.strictObject({
   formatVersion: z.literal(1),
   timeSignature: z.string().regex(/^\d{1,2}\/(1|2|4|8|16)$/),
   beatsPerBar: z.number().positive(),
@@ -97,11 +108,11 @@ export function docInvariants(doc: SongDoc): string[] {
 
 const slugSchema = z.string().regex(/^[a-z0-9-]{3,64}$/)
 
-const rightsSchema = z.object({
+const rightsSchema = z.strictObject({
   publicDomain: z.literal(true),
   creators: z
     .array(
-      z.object({
+      z.strictObject({
         name: z.string().min(1),
         role: z.enum(['komponist', 'tekstforfatter', 'oversetter', 'kilde-arrangør']),
         deathYear: z.number().int().max(1955).nullable(), // double-PD rule: died before 1956
@@ -113,7 +124,7 @@ const rightsSchema = z.object({
   notes: z.string().optional(),
 })
 
-export const seedSongSchema = z.object({
+export const seedSongSchema = z.strictObject({
   slug: slugSchema,
   work_slug: slugSchema,
   variant_label: z.string().min(1).max(24).nullable(),
@@ -130,11 +141,42 @@ export const seedSongSchema = z.object({
   tags: z.array(z.string().min(1).max(24)),
 })
 
+/** Cross-check the notation key against the denormalised library columns.
+ *
+ * `doc.keySignature` ('Eb', 'g') drives notation spelling; `original_key` +
+ * `mode` drive transposition, the key chip and the key filter. Nothing tied
+ * them together, so editing one and forgetting the other left every layer
+ * internally consistent and the song silently wrong (score in Eb, transposer
+ * and library chip in F). Returns a problem list; empty = agreed.
+ *
+ * NB: this cannot live in `docInvariants` — a SongDoc has no idea what the
+ * row's original_key/mode are. It belongs to whoever sees both halves. */
+export function keyAgreement(
+  keySignature: string,
+  original_key: number,
+  mode: Mode,
+): string[] {
+  const parsed = parseKeySignature(keySignature)
+  const problems: string[] = []
+  if (parsed.tonic !== original_key)
+    problems.push(
+      `keySignature '${keySignature}' har grunntone ${parsed.tonic}, men original_key er ${original_key}`,
+    )
+  if (parsed.mode !== mode)
+    problems.push(
+      `keySignature '${keySignature}' er ${parsed.mode} (store bokstaver = dur, små = moll), men mode er '${mode}'`,
+    )
+  return problems
+}
+
 /** Full validation for authored content: zod shape + structural invariants.
  * Throws with a readable message on the first failing song (seed-time). */
 export function validateSeedSong(input: unknown): SeedSong {
   const song = seedSongSchema.parse(input) as SeedSong
-  const problems = docInvariants(song.doc)
+  const problems = [
+    ...docInvariants(song.doc),
+    ...keyAgreement(song.doc.keySignature, song.original_key, song.mode),
+  ]
   if (problems.length > 0) {
     throw new Error(`SongDoc-invarianter feilet for "${song.slug}":\n- ${problems.join('\n- ')}`)
   }
@@ -152,7 +194,7 @@ const MELODY_LOW = 48 // C3 — matches songs.test.ts's singable-range invariant
 const MELODY_HIGH = 84 // C6
 const EPS = 1e-6
 
-export const songSourceSchema = z.object({
+export const songSourceSchema = z.strictObject({
   slug: slugSchema,
   title: z.string().min(1).max(80),
   subtitle: z.string().min(1).max(120).nullable(),
@@ -219,6 +261,10 @@ export function sourceInvariants(source: SongSource): string[] {
     if (chords[i].t > prev.t + prev.d + 2 + EPS)
       problems.push(`akkordhull > 2 slag ved beat ${prev.t + prev.d}`)
   }
+
+  // Same key cross-check as validateSeedSong — caught HERE the message names
+  // the source, not the three arrangements generated from it.
+  problems.push(...keyAgreement(source.keySignature, source.original_key, source.mode))
 
   // Levels must be unique (each generates one arrangement slug).
   if (new Set(source.levels).size !== source.levels.length)

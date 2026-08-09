@@ -53,6 +53,44 @@ describe('seed song library', () => {
     }
   })
 
+  // ── Gatekeeper bites (these guard the guard) ──────────────────────────────
+  // Each of these mutates a real seed song by ONE field and asserts the
+  // validator refuses it. Without them the checks below could silently rot into
+  // no-ops and the whole suite would stay green.
+
+  const sample = seedSongs[0] as SeedSong
+
+  it('rejects a keySignature that disagrees with original_key', () => {
+    // Score says F, library columns say G. Every layer stays internally
+    // consistent — only the cross-check sees the contradiction.
+    const wrong = { ...sample, original_key: (sample.original_key + 2) % 12 }
+    expect(() => validateSeedSong(wrong)).toThrow(/original_key/)
+  })
+
+  it('rejects a keySignature whose case disagrees with mode', () => {
+    const wrong = {
+      ...sample,
+      doc: { ...sample.doc, keySignature: sample.doc.keySignature.toLowerCase() },
+      mode: 'major' as const,
+    }
+    expect(() => validateSeedSong(wrong)).toThrow()
+  })
+
+  it('rejects unknown fields instead of silently stripping them', () => {
+    // A non-strict schema returns a LOSSY copy: the DB row would lack the field
+    // the bundled fallback object carries. Strict makes that a loud failure.
+    expect(() => validateSeedSong({ ...sample, tempoHint: 90 })).toThrow()
+    expect(() =>
+      validateSeedSong({ ...sample, doc: { ...sample.doc, swingRatio: 0.6 } }),
+    ).toThrow()
+    expect(() =>
+      validateSeedSong({
+        ...sample,
+        doc: { ...sample.doc, notes: [{ ...sample.doc.notes[0], accent: true }, ...sample.doc.notes.slice(1)] },
+      }),
+    ).toThrow()
+  })
+
   for (const song of seedSongs) {
     describe(song.slug, () => {
       it('passes validateSeedSong (zod + docInvariants)', () => {

@@ -28,9 +28,16 @@ export default function VersPage() {
   const [sr, setSr] = useState<SrState | null>(null) // null until mounted
   const [session, setSession] = useState<Session | null>(null)
   const [finished, setFinished] = useState<Session | null>(null)
-  const today = todayKey()
+  // Resolved in the effect, not in render: `new Date()` during render is a
+  // server/client mismatch waiting to happen (the prerendered HTML carries the
+  // BUILD date), and it makes every re-render depend on the wall clock. The
+  // sister page (teologi/page.tsx) already does it this way.
+  const [today, setToday] = useState('')
 
-  useEffect(() => setSr(loadSr()), [])
+  useEffect(() => {
+    setToday(todayKey())
+    setSr(loadSr())
+  }, [])
 
   const dueByCollection = useMemo(() => {
     if (!sr) return {}
