@@ -7,7 +7,6 @@ import { usePlayer } from '@/lib/store'
 import { getEngine } from '@/lib/engine'
 import { installAudioUnlock } from '@/lib/audio-unlock'
 import { nearestOffset, transposeDoc } from '@/lib/transpose'
-import { sectionOf } from '@/lib/song/sections'
 import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useWaitMode } from '@/lib/useWaitMode'
@@ -57,6 +56,7 @@ export function SongPlayer({ song }: Props) {
   const targetKey = usePlayer((s) => s.targetKey)
   const hand = usePlayer((s) => s.hand)
   const loop = usePlayer((s) => s.loop)
+  const activeSectionId = usePlayer((s) => s.activeSectionId)
   const waitMode = usePlayer((s) => s.waitMode)
   const metronome = usePlayer((s) => s.metronome)
   const countIn = usePlayer((s) => s.countIn)
@@ -88,10 +88,18 @@ export function SongPlayer({ song }: Props) {
   // Piano is the only instrument that mounts SongPlayer today.
   const progressKey = `piano:${song.slug}`
 
-  // Active section under the play-head (for progress + wait-mode range default).
-  const activeSection = useMemo(() => sectionOf(doc, currentBeat), [doc, currentBeat])
+  // The section the learner EXPLICITLY picked in SectionNav (null = none). The
+  // play-head's section is NOT a substitute: it is never null, so deriving the
+  // trainer range from it pins the range to whatever section the (stopped)
+  // play-head sits in — always the first one.
+  const selectedSection = useMemo(
+    () => (activeSectionId ? (doc.sections.find((s) => s.id === activeSectionId) ?? null) : null),
+    [doc.sections, activeSectionId],
+  )
 
   // Reset transport controls to the song's defaults when the song changes.
+  // metronome/countIn/bandMode are global and other fag (rytme, groove) turn
+  // them on, so a fresh song must start from the song player's own defaults.
   useEffect(() => {
     const st = usePlayer.getState()
     st.set({
@@ -102,13 +110,17 @@ export function SongPlayer({ song }: Props) {
       waitMode: false,
       activeSectionId: null,
       currentBeat: 0,
+      metronome: false,
+      countIn: false,
+      bandMode: false, // the mixer LEVELS (bandMix) are a preference — kept
     })
   }, [song.slug, song.original_key, song.default_bpm])
 
-  // Install the iOS audio unlock once; tear the engine down on leave.
+  // Install the iOS audio unlock once; release the engine (parts + transport,
+  // NOT the loaded samples) on leave.
   useEffect(() => {
     installAudioUnlock()
-    return () => getEngine().dispose()
+    return () => getEngine().release()
   }, [])
 
   // (Re)build the Tone part when the notes change (doc = key, hand, or band). In
@@ -139,14 +151,15 @@ export function SongPlayer({ song }: Props) {
     engine.setLoopRange(loop ? loop[0] : null, loop ? loop[1] : null)
   }, [loop])
 
-  // Wait-mode trainer. Gate on the selected hand within the active section (or
-  // the A-B loop range, or the whole song). Input arrives from MIDI or clicks.
-  const waitRange: [number, number] | null = activeSection
-    ? [activeSection.startBeat, activeSection.endBeat]
+  // Wait-mode trainer. Gate on the selected hand within the section the learner
+  // picked (or the A-B loop range, or the whole song). Input arrives from MIDI
+  // or clicks.
+  const waitRange: [number, number] | null = selectedSection
+    ? [selectedSection.startBeat, selectedSection.endBeat]
     : loop
   const onWaitLoop = useCallback(
-    () => recordPractice(progressKey, bpmRef.current, activeSection?.id),
-    [progressKey, activeSection],
+    () => recordPractice(progressKey, bpmRef.current, selectedSection?.id),
+    [progressKey, selectedSection],
   )
   const wait = useWaitMode(doc.notes, { range: waitRange, hand, onLoopComplete: onWaitLoop })
   const inputRef = useRef(wait.input)

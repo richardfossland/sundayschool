@@ -7,7 +7,6 @@ import { usePlayer } from '@/lib/store'
 import { getEngine } from '@/lib/engine'
 import { installAudioUnlock } from '@/lib/audio-unlock'
 import { nearestOffset, transposeDoc } from '@/lib/transpose'
-import { sectionOf } from '@/lib/song/sections'
 import { recordPractice } from '@/lib/progress'
 import { connectMidi, midiSupported, type MidiConnection } from '@/lib/midi'
 import { useWaitMode } from '@/lib/useWaitMode'
@@ -47,6 +46,7 @@ export function BassPlayer({ song }: Props) {
   const bpm = usePlayer((s) => s.bpm)
   const targetKey = usePlayer((s) => s.targetKey)
   const loop = usePlayer((s) => s.loop)
+  const activeSectionId = usePlayer((s) => s.activeSectionId)
   const waitMode = usePlayer((s) => s.waitMode)
   const metronome = usePlayer((s) => s.metronome)
   const countIn = usePlayer((s) => s.countIn)
@@ -92,9 +92,16 @@ export function BassPlayer({ song }: Props) {
   // Subject-prefixed progress key (Skolen v2 — all keys are `{fag}:{slug}`).
   const progressKey = `bass:${song.slug}`
 
-  const activeSection = useMemo(() => sectionOf(doc, currentBeat), [doc, currentBeat])
+  // The section the learner EXPLICITLY picked in SectionNav (null = none) — see
+  // SongPlayer: the play-head's section is never null and would pin the trainer
+  // range to the first section forever.
+  const selectedSection = useMemo(
+    () => (activeSectionId ? (doc.sections.find((s) => s.id === activeSectionId) ?? null) : null),
+    [doc.sections, activeSectionId],
+  )
 
-  // Reset transport controls to the song's defaults when the song changes.
+  // Reset transport controls to the song's defaults when the song changes
+  // (metronome/countIn/bandMode are global — other fag turn them on).
   useEffect(() => {
     const st = usePlayer.getState()
     st.set({
@@ -105,12 +112,15 @@ export function BassPlayer({ song }: Props) {
       waitMode: false,
       activeSectionId: null,
       currentBeat: 0,
+      metronome: false,
+      countIn: false,
+      bandMode: false, // the mixer LEVELS (bandMix) are a preference — kept
     })
   }, [song.slug, song.original_key, song.default_bpm])
 
   useEffect(() => {
     installAudioUnlock()
-    return () => getEngine().dispose()
+    return () => getEngine().release()
   }, [])
 
   // (Re)build when the generated line changes (key, level, or band). Solo mode:
@@ -151,12 +161,12 @@ export function BassPlayer({ song }: Props) {
   // Wait-mode over the generated bassline (MIDI or fretboard clicks). The
   // shared hook sounds its feedback on the (muted) piano channel; the input
   // wrapper below plays the bass sample, so what you hear is a bass.
-  const waitRange: [number, number] | null = activeSection
-    ? [activeSection.startBeat, activeSection.endBeat]
+  const waitRange: [number, number] | null = selectedSection
+    ? [selectedSection.startBeat, selectedSection.endBeat]
     : loop
   const onWaitLoop = useCallback(
-    () => recordPractice(progressKey, bpmRef.current, activeSection?.id),
-    [progressKey, activeSection],
+    () => recordPractice(progressKey, bpmRef.current, selectedSection?.id),
+    [progressKey, selectedSection],
   )
   const wait = useWaitMode(bassNotes, { range: waitRange, hand: 'both', onLoopComplete: onWaitLoop })
   const waitInputRef = useRef(wait.input)

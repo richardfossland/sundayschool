@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Play, Square, Loader2 } from 'lucide-react'
 import type { Song } from '@/types/song'
-import { fetchSong } from '@/lib/songs'
+import { usePlayer } from '@/lib/store'
 import { getEngine } from '@/lib/engine'
 import { nearestOffset, transposeDoc } from '@/lib/transpose'
 import { recordPractice } from '@/lib/progress'
@@ -13,34 +13,47 @@ import { recordPractice } from '@/lib/progress'
 // FØRSTE seksjonen (intro/frase) loopes via den delte engine-en. Bevisst liten —
 // play/stop + tempo. Én global engine betyr at bare én intro spiller om gangen;
 // å starte en ny bygger den om og stopper den forrige.
+//
+// Derfor kan «spiller nå» ALDRI være lokal state: en setliste monterer én slik
+// widget per innslag, og en lokal flagg-variabel ville fått hver eneste av dem
+// til å påstå at DEN spilte. Sannheten er global (`isPlaying` fra engine-en),
+// og `transportOwner` avgjør hvem av dem sannheten gjelder.
 
-export function IntroTrening({ workSlug, targetKey }: { workSlug: string; targetKey: number }) {
-  const [song, setSong] = useState<Song | null>(null)
-  const [playing, setPlaying] = useState(false)
+export function IntroTrening({
+  song,
+  workSlug,
+  targetKey,
+}: {
+  song: Song | null
+  workSlug: string
+  targetKey: number
+}) {
+  const id = useId()
+  const enginePlaying = usePlayer((s) => s.isPlaying)
+  const owner = usePlayer((s) => s.transportOwner)
+  const playing = enginePlaying && owner === id
+
   const [loading, setLoading] = useState(false)
-  const [bpm, setBpm] = useState(80)
+  const [bpm, setBpm] = useState(song?.default_bpm ?? 80)
   const bpmRef = useRef(bpm)
   bpmRef.current = bpm
 
+  // Følg sangens eget tempo når den er lastet (og ved bytte av innslag).
   useEffect(() => {
-    let alive = true
-    fetchSong(workSlug).then((s) => {
-      if (alive) {
-        setSong(s)
-        if (s) setBpm(s.default_bpm)
-      }
-    })
-    return () => {
-      alive = false
-    }
-  }, [workSlug])
+    if (song) setBpm(song.default_bpm)
+  }, [song])
 
-  // Stopp engine-en når komponenten forlates midt i avspilling.
+  // Stopp transporten når widgeten forlates — UBETINGET. Et flagg satt etter
+  // `await play()` finnes ennå ikke mens samplene lastes, så en betinget
+  // opprydding lot nettopp DEN avspillingen leve videre uten noe å stoppe den.
   useEffect(
     () => () => {
-      if (playing) getEngine().stop()
+      getEngine().stop()
+      if (usePlayer.getState().transportOwner === id) {
+        usePlayer.getState().setTransportOwner(null)
+      }
     },
-    [playing],
+    [id],
   )
 
   const firstSection = song?.doc.sections[0] ?? null
@@ -49,7 +62,7 @@ export function IntroTrening({ workSlug, targetKey }: { workSlug: string; target
     const engine = getEngine()
     if (playing) {
       engine.stop()
-      setPlaying(false)
+      usePlayer.getState().setTransportOwner(null)
       return
     }
     if (!song || !firstSection) return
@@ -59,9 +72,11 @@ export function IntroTrening({ workSlug, targetKey }: { workSlug: string; target
     // Loop kun [0, første seksjons slutt] — innledningen, om og om igjen.
     engine.build(doc, { hand: 'both', bpm: bpmRef.current, loop: true, transpose: 0 })
     engine.setLoopRange(0, firstSection.endBeat)
+    // Ta eierskap FØR await: lastingen kan ta sekunder, og en avmontering
+    // underveis må kunne se at det er denne widgeten som holder transporten.
+    usePlayer.getState().setTransportOwner(id)
     await engine.play()
     setLoading(false)
-    setPlaying(true)
     recordPractice(`lovsang:intro-${workSlug}`, bpmRef.current)
   }
 

@@ -89,10 +89,11 @@ export function GroovePlayer({ groove }: Props) {
     })
   }, [groove.id, groove.bpmDefault])
 
-  // Install the iOS audio unlock once; tear the engine down on leave.
+  // Install the iOS audio unlock once; release the engine (parts + transport,
+  // NOT the loaded samples) on leave.
   useEffect(() => {
     installAudioUnlock()
-    return () => getEngine().dispose()
+    return () => getEngine().release()
   }, [])
 
   // Build the looping pattern. Drums carry GM-pitch identity — never transposed.

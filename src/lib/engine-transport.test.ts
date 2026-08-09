@@ -1,0 +1,229 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SongDoc } from '@/types/song'
+
+// ── Engine transport lifecycle (Tone mocked) ─────────────────────────────────
+//
+// engine.ts is the one module that cannot be tested in the browser: the pieces
+// that matter here — the one-shot end-stop and what a route change tears down —
+// are invisible until the SECOND playback, and Tone.Draw (which delivers the
+// end-stop) is driven by requestAnimationFrame, so a background tab never shows
+// them at all. So we drive a fake Transport and assert the bookkeeping directly.
+
+/** The fake Transport, rebuilt per test. */
+const transport = {
+  PPQ: 192,
+  bpm: { value: 120 },
+  loop: false,
+  loopStart: '0i',
+  loopEnd: '0i',
+  position: 0,
+  ticks: 0,
+  /** Scheduled one-shots: id → callback. Cleared ids are removed. */
+  once: new Map<number, (time: number) => void>(),
+  nextId: 1,
+  scheduleOnce: vi.fn((cb: (time: number) => void) => {
+    const id = transport.nextId++
+    transport.once.set(id, cb)
+    return id
+  }),
+  scheduleRepeat: vi.fn(() => transport.nextId++),
+  clear: vi.fn((id: number) => void transport.once.delete(id)),
+  start: vi.fn(),
+  stop: vi.fn(),
+  getTicksAtTime: vi.fn(() => 0),
+}
+
+/**
+ * Fire the scheduled end-stop the way Tone does: the event is REMOVED first
+ * (scheduleOnce is one-shot), then the callback runs. This is the exact
+ * behaviour that made the second playback never stop.
+ */
+function fireEndStop() {
+  const entries = [...transport.once.entries()]
+  expect(entries.length).toBe(1) // exactly one end-stop armed
+  const [id, cb] = entries[0]
+  transport.once.delete(id)
+  cb(0)
+}
+
+class FakeNode {
+  disposed = false
+  connect() {
+    return this
+  }
+  toDestination() {
+    return this
+  }
+  dispose() {
+    this.disposed = true
+  }
+  triggerAttackRelease() {}
+  volume = { value: 0 }
+}
+class FakePlayers extends FakeNode {
+  has() {
+    return false
+  }
+  player() {
+    return { volume: { value: 0 }, start() {} }
+  }
+}
+class FakePart extends FakeNode {
+  start() {
+    return this
+  }
+}
+
+vi.mock('tone', () => ({
+  get Transport() {
+    return transport
+  },
+  Sampler: FakeNode,
+  Players: FakePlayers,
+  Volume: FakeNode,
+  MembraneSynth: FakeNode,
+  Part: FakePart,
+  Draw: { schedule: (cb: () => void) => cb() }, // rAF, run inline
+  Frequency: () => ({ toFrequency: () => 440 }),
+  gainToDb: () => 0,
+  now: () => 0,
+  loaded: () => Promise.resolve(),
+}))
+
+vi.mock('./audio-unlock', () => ({
+  ensureAudioRunning: vi.fn(async () => {}),
+  installAudioUnlock: vi.fn(),
+}))
+
+const { getEngine } = await import('./engine')
+const { usePlayer } = await import('./store')
+
+const doc = (): SongDoc => ({
+  formatVersion: 1,
+  timeSignature: '4/4',
+  beatsPerBar: 4,
+  pickupBeats: 0,
+  totalBeats: 16,
+  keySignature: 'C',
+  sections: [{ id: 's1', kind: 'verse', label: 'Del 1', startBeat: 0, endBeat: 16 }],
+  notes: [{ p: 60, t: 0, d: 1, h: 'R' }],
+  chords: [],
+})
+
+const build = (loop = false) =>
+  getEngine().build(doc(), { hand: 'both', bpm: 100, loop, transpose: 0 })
+
+beforeEach(() => {
+  transport.once.clear()
+  // nextId is deliberately NOT reset: the engine is a singleton and carries ids
+  // (metro, end-stop) across tests, so reusing ids would let one test's clear()
+  // delete another's event.
+  transport.scheduleOnce.mockClear()
+  transport.stop.mockClear()
+  transport.start.mockClear()
+  usePlayer.getState().set({ isPlaying: false, currentBeat: 0, countIn: false })
+  // tick() drives the beat clock off rAF; a no-op stub keeps it from recursing.
+  globalThis.requestAnimationFrame = (() => 1) as typeof requestAnimationFrame
+  globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame
+})
+
+describe('end-stop re-arming', () => {
+  it('stops the FIRST playback at the end of the song', async () => {
+    build()
+    await getEngine().play()
+    expect(usePlayer.getState().isPlaying).toBe(true)
+    fireEndStop()
+    expect(transport.stop).toHaveBeenCalled()
+    expect(usePlayer.getState().isPlaying).toBe(false)
+  })
+
+  it('stops the SECOND playback too — the one-shot is re-armed on play', async () => {
+    build()
+    await getEngine().play()
+    fireEndStop() // first pass reaches the end; Tone drops the event
+    expect(transport.once.size).toBe(0)
+
+    // Press play again. Without re-arming there is nothing left to stop it:
+    // the transport would run past the end forever, isPlaying stuck on, and
+    // every wrap-around re-recording practice.
+    await getEngine().play()
+    expect(transport.once.size).toBe(1)
+    fireEndStop()
+    expect(usePlayer.getState().isPlaying).toBe(false)
+  })
+
+  it('never arms an end-stop while looping', async () => {
+    build(true)
+    await getEngine().play()
+    expect(transport.once.size).toBe(0)
+    await getEngine().play()
+    expect(transport.once.size).toBe(0)
+  })
+
+  it('follows a live loop toggle in both directions', async () => {
+    build(true)
+    getEngine().setLoop(false)
+    await getEngine().play()
+    expect(transport.once.size).toBe(1)
+    getEngine().setLoop(true)
+    expect(transport.once.size).toBe(0)
+  })
+})
+
+describe('release() vs dispose()', () => {
+  it('release keeps the loaded samplers and the beat listeners', async () => {
+    build()
+    await getEngine().play()
+    const beats: number[] = []
+    const unsub = getEngine().onBeat((b) => beats.push(b))
+
+    getEngine().release()
+    expect(transport.stop).toHaveBeenCalled()
+    expect(beats).toEqual([0]) // stop() notified the listener — still subscribed
+
+    // A listener registered before the route change still hears the next song.
+    build()
+    getEngine().seekTo(4)
+    expect(beats).toEqual([0, 4])
+    unsub()
+  })
+
+  it('release keeps the decoded samples — a route change must not re-load them', async () => {
+    getEngine().dispose() // start from cold
+    build()
+    await getEngine().play()
+    expect(usePlayer.getState().isLoading).toBe(false)
+
+    // Leaving one song and opening another: the sampler is already there, so
+    // ensureInstrument never flips isLoading and never rebuilds the node.
+    getEngine().release()
+    build()
+    usePlayer.getState().set({ isLoading: false })
+    let sawLoading = false
+    const unsub = usePlayer.subscribe((s) => {
+      if (s.isLoading) sawLoading = true
+    })
+    await getEngine().play()
+    unsub()
+    expect(sawLoading).toBe(false)
+  })
+
+  it('release drops the end-stop so it cannot fire into a torn-down song', async () => {
+    build()
+    await getEngine().play()
+    expect(transport.once.size).toBe(1)
+    getEngine().release()
+    expect(transport.once.size).toBe(0)
+  })
+
+  it('dispose is the full teardown — listeners included', async () => {
+    build()
+    await getEngine().play()
+    const beats: number[] = []
+    getEngine().onBeat((b) => beats.push(b))
+    getEngine().dispose()
+    beats.length = 0
+    getEngine().seekTo(2)
+    expect(beats).toEqual([]) // unsubscribed by the teardown
+  })
+})

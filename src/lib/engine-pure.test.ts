@@ -62,17 +62,10 @@ describe('buildEvents', () => {
     expect(buildEvents({ notes }, { hand: 'both' })).toHaveLength(2)
   })
 
-  it("hand='R' drops the muted hand when no muted velocity is set", () => {
+  it("hand='R' drops the muted hand entirely", () => {
     const evs = buildEvents({ notes }, { hand: 'R' })
     expect(evs).toHaveLength(1)
     expect(evs[0].hand).toBe('R')
-  })
-
-  it('keeps the muted hand at mutedHandVelocity when provided', () => {
-    const evs = buildEvents({ notes }, { hand: 'R', mutedHandVelocity: 0.15 })
-    expect(evs).toHaveLength(2)
-    const left = evs.find((e) => e.hand === 'L')!
-    expect(left.vel).toBe(0.15)
   })
 
   it('transposes every pitch by the semitone offset', () => {

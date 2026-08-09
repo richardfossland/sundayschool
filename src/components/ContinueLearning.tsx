@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { getProgress } from '@/lib/progress'
-import { SUBJECT_BY_ID, type SubjectId } from '@/lib/subjects'
+import { recentItems, type ResolvedItem } from '@/lib/continue-resolve'
 
 // ── ContinueLearning — "Fortsett der du slapp" ────────────────────────────────
 // Reads local practice progress and surfaces the (up to) three most recently
@@ -12,95 +12,25 @@ import { SUBJECT_BY_ID, type SubjectId } from '@/lib/subjects'
 // nothing on the server and nothing until mounted (localStorage is client-only),
 // and nothing when there is no history — so a first-time visit stays clean.
 //
-// Titles for songs and grooves can't be derived from a progress key alone, so
-// the server passes lightweight slug→title / id→label maps as props (keeping the
-// heavy song docs out of this client bundle).
-
-interface ResolvedItem {
-  key: string
-  label: string
-  sub: string
-  href: string
-  accent: string
-  date: string
-}
-
-const GEHOR_TYPE_LABEL: Record<string, string> = {
-  intervall: 'Intervaller',
-  akkord: 'Akkordkvalitet',
-  melodi: 'Melodidiktat',
-}
-
-/** Turn a subject-prefixed progress key into a display item, or null if the key
- * shape isn't one we can link. `date` is the last-practiced day (for sorting). */
-function resolve(
-  key: string,
-  date: string,
-  songTitles: Record<string, string>,
-  grooveTitles: Record<string, string>,
-): ResolvedItem | null {
-  const colon = key.indexOf(':')
-  if (colon === -1) return null
-  const fag = key.slice(0, colon) as SubjectId
-  const rest = key.slice(colon + 1)
-  const subject = SUBJECT_BY_ID[fag]
-  if (!subject) return null
-  const accent = subject.accent
-  const base = { key, accent, date }
-
-  // Instrument songs: {fag}:{slug} → the fag's player for that song.
-  if (fag === 'piano' || fag === 'gitar' || fag === 'bass') {
-    return { ...base, label: songTitles[rest] ?? rest, sub: subject.label, href: `/${fag}/sang/${rest}` }
-  }
-
-  if (fag === 'trommer') {
-    // Two shapes: trommer:groove:{id} and trommer:{slug}.
-    if (rest.startsWith('groove:')) {
-      const id = rest.slice('groove:'.length)
-      return { ...base, label: grooveTitles[id] ?? id, sub: 'Trommer · Groove', href: `/trommer/groove/${id}` }
-    }
-    return { ...base, label: songTitles[rest] ?? rest, sub: 'Trommer', href: `/trommer/sang/${rest}` }
-  }
-
-  if (fag === 'gehor') {
-    // gehor:{type}-{level}
-    const dash = rest.lastIndexOf('-')
-    const type = dash === -1 ? rest : rest.slice(0, dash)
-    const level = dash === -1 ? '' : rest.slice(dash + 1)
-    const typeLabel = GEHOR_TYPE_LABEL[type] ?? 'Gehør'
-    return { ...base, label: typeLabel, sub: level ? `Gehør · Nivå ${level}` : 'Gehør', href: '/gehor' }
-  }
-
-  if (fag === 'teologi') {
-    return { ...base, label: 'Bibelvers', sub: 'Teologi', href: '/teologi/vers' }
-  }
-
-  return null
-}
+// Titles for songs, grooves and lessons can't be derived from a progress key
+// alone, so the server passes lightweight slug→title maps as props (keeping the
+// heavy song docs out of this client bundle). The key→card mapping itself lives
+// in lib/continue-resolve.ts, where it is unit-tested per fag.
 
 export function ContinueLearning({
   songTitles,
   grooveTitles,
+  lessonTitles,
 }: {
   songTitles: Record<string, string>
   grooveTitles: Record<string, string>
+  lessonTitles: Record<string, string>
 }) {
   const [items, setItems] = useState<ResolvedItem[] | null>(null)
 
   useEffect(() => {
-    const p = getProgress()
-    // Order among same-day entries: later in `practiced` = more recently added.
-    const order = new Map(p.practiced.map((k, i) => [k, i]))
-    const resolved = Object.entries(p.lastPracticed)
-      .map(([key, date]) => resolve(key, date, songTitles, grooveTitles))
-      .filter((r): r is ResolvedItem => r !== null)
-      .sort((a, b) => {
-        if (a.date !== b.date) return a.date < b.date ? 1 : -1
-        return (order.get(b.key) ?? -1) - (order.get(a.key) ?? -1)
-      })
-      .slice(0, 3)
-    setItems(resolved)
-  }, [songTitles, grooveTitles])
+    setItems(recentItems(getProgress(), { songTitles, grooveTitles, lessonTitles }))
+  }, [songTitles, grooveTitles, lessonTitles])
 
   if (!items || items.length === 0) return null
 

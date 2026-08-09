@@ -35,10 +35,12 @@ export interface PlayerData {
   lookaheadBeats: number
   metronome: boolean // click on every beat during playback
   countIn: boolean // one bar of clicks before playback starts
+  /** Who last started the ONE global transport. Several small players (e.g. a
+   * setlist's intro widgets) can be mounted at once; each compares this to its
+   * own id so only the one actually sounding renders as "playing". */
+  transportOwner: string | null
 
   // ── Skolen v2 — multi-instrument fields (additive) ──────────────────────────
-  /** Which instrument the current session plays (drives sampler + band mix). */
-  instrument: InstrumentId
   /** Band-modus: play the song as an ensemble rather than a single instrument. */
   bandMode: boolean
   /** Per-instrument gain 0–1 in band-modus (absent = default level). */
@@ -62,8 +64,8 @@ interface PlayerState extends PlayerData {
   setLookaheadBeats: (lookaheadBeats: number) => void
   toggleMetronome: () => void
   toggleCountIn: () => void
+  setTransportOwner: (transportOwner: string | null) => void
   // Skolen v2 setters.
-  setInstrument: (instrument: InstrumentId) => void
   setBandMode: (bandMode: boolean) => void
   setBandMix: (bandMix: Partial<Record<InstrumentId, number>>) => void
   setStrumPattern: (strumPattern: string | null) => void
@@ -83,7 +85,7 @@ export const usePlayer = create<PlayerState>((set) => ({
   lookaheadBeats: 4,
   metronome: false,
   countIn: false,
-  instrument: 'piano',
+  transportOwner: null,
   bandMode: false,
   bandMix: {},
   strumPattern: null,
@@ -98,7 +100,7 @@ export const usePlayer = create<PlayerState>((set) => ({
   setLookaheadBeats: (lookaheadBeats) => set({ lookaheadBeats }),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
   toggleCountIn: () => set((s) => ({ countIn: !s.countIn })),
-  setInstrument: (instrument) => set({ instrument }),
+  setTransportOwner: (transportOwner) => set({ transportOwner }),
   setBandMode: (bandMode) => set({ bandMode }),
   setBandMix: (bandMix) => set({ bandMix }),
   setStrumPattern: (strumPattern) => set({ strumPattern }),

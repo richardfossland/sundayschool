@@ -10,17 +10,48 @@
 // samme rene array-operasjonene, så lagring/lasting aldri gjemmer forretnings-
 // logikk bak nettleser-API.
 
+import type { Mode } from '@/types/song'
 import { pitchClass } from '../music'
 import { chordSymbol, keyNameForTonic } from '../spelling'
-import { circleIndex } from '../theory/circle'
+import { circleIndex, relativeMajor } from '../theory/circle'
 
 // ── Datamodell ───────────────────────────────────────────────────────────────
 
 /** Ett innslag i en setliste: ett verk spilt i én måltoneart (pitch class 0–11). */
 export interface SetlistEntry {
+  /** Stabil identitet for lista i UI-et. Valgfri i FELTET fordi lister lagret
+   * før dette fantes mangler den — `loadSetlists` fyller inn ved lesing, og
+   * `addEntry` gir alltid nye innslag en id. */
+  id?: string
   workSlug: string
   /** Måltoneart som pitch class 0–11 (0 = C). */
   targetKey: number
+  /** Verkets modus. Uten den ville en mollsang bli behandlet som dur: a-moll
+   * ved siden av C-dur er SAMME toneartsområde, men som durtonika ligger de tre
+   * kvinter fra hverandre — altså «krevende overgang» der det i virkeligheten
+   * ikke er noen. Valgfri av samme bakoverkompatible grunn som `id`;
+   * `entryMode()` er den ene stedet defaulten 'major' bor. */
+  mode?: Mode
+}
+
+/** Innslagets modus, med dur som default for eldre lagrede data. */
+export function entryMode(entry: SetlistEntry): Mode {
+  return entry.mode ?? 'major'
+}
+
+/**
+ * Toneartens plass på kvintsirkelen: en molltoneart måles gjennom sin PARALLELLE
+ * DUR (a-moll → C), fordi det er fortegnene — ikke grunntonen — som avgjør hvor
+ * langt øret må flytte seg.
+ */
+export function tonalCenter(key: number, mode: Mode = 'major'): number {
+  return mode === 'minor' ? relativeMajor(key) : pitchClass(key)
+}
+
+/** Lesbart toneartsnavn: 'G' for dur, 'a-moll' for moll (aldri bare 'a'). */
+function keyLabel(pc: number, mode: Mode): string {
+  const name = keyNameForTonic(pc, mode)
+  return mode === 'minor' ? `${name}-moll` : name
 }
 
 /** En navngitt setliste, lagret per enhet i localStorage. */
@@ -49,29 +80,44 @@ export function circleDistance(fromKey: number, toKey: number): number {
 /**
  * Flyt-vurdering av én overgang: kvintsirkel-avstand + karakter. Nære tonearter
  * (≤1 steg) flyter godt, 2 steg er ok, 3+ er krevende og trenger et bevisst
- * grep for å ikke rykke øret ut av flyten.
+ * grep for å ikke rykke øret ut av flyten. Moll måles gjennom parallell dur.
  */
-export function keyFlowScore(fromKey: number, toKey: number): { steps: number; rating: FlowRating } {
-  const steps = circleDistance(fromKey, toKey)
+export function keyFlowScore(
+  fromKey: number,
+  toKey: number,
+  fromMode: Mode = 'major',
+  toMode: Mode = 'major',
+): { steps: number; rating: FlowRating } {
+  const steps = circleDistance(tonalCenter(fromKey, fromMode), tonalCenter(toKey, toMode))
   const rating: FlowRating = steps <= 1 ? 'god' : steps === 2 ? 'ok' : 'krevende'
   return { steps, rating }
 }
 
 /**
- * 2–3 konkrete, spillbare råd for å binde `fromKey` til `toKey`. Tonearter
- * navngis som dur (setlista lagrer bare pitch class), og akkordene staves
- * enharmonisk riktig i den nye tonearten.
+ * 2–3 konkrete, spillbare råd for å binde `fromKey` til `toKey`. Akkordene
+ * staves enharmonisk riktig i den nye tonearten, og i moll er trinn ii en
+ * halvformindsket m7b5 — ikke en m7, som ville hørt fremmed ut mot mollskalaen.
+ * Dominanten er V7 i begge modi (den hevede ledetonen er selve kadensen).
  */
-export function transitionSuggestions(fromKey: number, toKey: number): string[] {
-  const toName = keyNameForTonic(toKey, 'major')
+export function transitionSuggestions(
+  fromKey: number,
+  toKey: number,
+  toMode: Mode = 'major',
+): string[] {
+  const toSig = keyNameForTonic(toKey, toMode) // fortegn for staving ('Ab', 'a', …)
+  const toName = keyLabel(toKey, toMode)
 
   if (fromKey === toKey) {
-    const tonic = chordSymbol(toKey, '', toName)
+    const tonic = chordSymbol(toKey, toMode === 'minor' ? 'm' : '', toSig)
     return [`Samme toneart (${toName}) — hold flyten med et kort mellomspill på ${tonic}, uten å bytte.`]
   }
 
-  const dominant = chordSymbol(pitchClass(toKey + 7), '7', toName) // V7 i ny toneart
-  const supertonic = chordSymbol(pitchClass(toKey + 2), 'm7', toName) // ii7 i ny toneart
+  const dominant = chordSymbol(pitchClass(toKey + 7), '7', toSig) // V7 i ny toneart
+  const supertonic = chordSymbol(
+    pitchClass(toKey + 2),
+    toMode === 'minor' ? 'm7b5' : 'm7',
+    toSig,
+  ) // ii i ny toneart
   const out: string[] = [
     `Bruk ${dominant} (dominanten i ${toName}) som felles akkord — den leder øret rett inn i ${toName}.`,
     `Legg inn en ii–V: ${supertonic}–${dominant} de siste taktene før ${toName}.`,
@@ -93,7 +139,9 @@ export interface TransitionAnalysis {
   /** Indeksen til innslaget FØR overgangen (overgangen er i → i+1). */
   fromIndex: number
   fromKey: number
+  fromMode: Mode
   toKey: number
+  toMode: Mode
   steps: number
   rating: FlowRating
   suggestions: string[]
@@ -112,14 +160,18 @@ export function analyzeSetlist(entries: SetlistEntry[]): {
   for (let i = 0; i < entries.length - 1; i++) {
     const fromKey = entries[i].targetKey
     const toKey = entries[i + 1].targetKey
-    const { steps, rating } = keyFlowScore(fromKey, toKey)
+    const fromMode = entryMode(entries[i])
+    const toMode = entryMode(entries[i + 1])
+    const { steps, rating } = keyFlowScore(fromKey, toKey, fromMode, toMode)
     perTransition.push({
       fromIndex: i,
       fromKey,
+      fromMode,
       toKey,
+      toMode,
       steps,
       rating,
-      suggestions: transitionSuggestions(fromKey, toKey),
+      suggestions: transitionSuggestions(fromKey, toKey, toMode),
     })
   }
 
@@ -133,9 +185,15 @@ export function analyzeSetlist(entries: SetlistEntry[]): {
 
 // ── Rene innslag-operasjoner (immutable) ─────────────────────────────────────
 
-/** Legg til et innslag på slutten av lista. */
+/** Legg til et innslag på slutten av lista. Innslaget får en stabil id her —
+ * ikke i UI-et — så React-nøkler overlever omorganisering (en indeksnøkkel
+ * remonterer alt under et innslag som flyttes, og river avspillingen med seg).
+ * Modus følger verket, med dur som default. */
 export function addEntry(entries: SetlistEntry[], entry: SetlistEntry): SetlistEntry[] {
-  return [...entries, entry]
+  return [
+    ...entries,
+    { ...entry, id: entry.id ?? newEntryId(), mode: entryMode(entry) },
+  ]
 }
 
 /** Fjern innslaget på `index` (out-of-range = uendret). */
@@ -193,6 +251,17 @@ function newSetlistId(now: number = Date.now()): string {
   return `sl_${now.toString(36)}_${(idCounter++).toString(36)}`
 }
 
+let entryCounter = 0
+function newEntryId(now: number = Date.now()): string {
+  return `se_${now.toString(36)}_${(entryCounter++).toString(36)}`
+}
+
+/** Fyll inn felter eldre lagrede innslag mangler (id, modus). Ids utledes av
+ * liste-id + posisjon, så de er stabile på tvers av lesinger. */
+function normalizeEntries(listId: string, entries: SetlistEntry[]): SetlistEntry[] {
+  return entries.map((e, i) => ({ ...e, id: e.id ?? `${listId}_${i}`, mode: entryMode(e) }))
+}
+
 function isSetlist(v: unknown): v is Setlist {
   if (!v || typeof v !== 'object') return false
   const o = v as Record<string, unknown>
@@ -219,7 +288,10 @@ export function loadSetlists(): Setlist[] {
     if (!raw) return []
     const arr = JSON.parse(raw)
     if (!Array.isArray(arr)) return []
-    return arr.filter(isSetlist).sort((a, b) => b.updatedAt - a.updatedAt)
+    return arr
+      .filter(isSetlist)
+      .map((l) => ({ ...l, entries: normalizeEntries(l.id, l.entries) }))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
   } catch {
     return []
   }

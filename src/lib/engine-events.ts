@@ -70,28 +70,20 @@ export interface BuildEventsOptions {
   hand: HandFilter
   /** Semitone offset applied to every pitch (transposition). Default 0. */
   transpose?: number
-  /** When set and a note belongs to the NON-selected hand, keep it at this
-   * velocity instead of dropping it (per-hand / band practice). Undefined =
-   * the muted hand is silent (omitted entirely). */
-  mutedHandVelocity?: number
 }
 
 /**
  * Flatten a SongDoc into sounding events: merge ties, apply the hand filter
- * (optionally keeping the muted hand at a low velocity), and transpose. Only
- * `doc.notes` is read, so tests can pass a minimal `{ notes }`.
+ * (the non-selected hand is silent) and transpose. Only `doc.notes` is read, so
+ * tests can pass a minimal `{ notes }`.
  */
 export function buildEvents(doc: Pick<SongDoc, 'notes'>, opts: BuildEventsOptions): EngineEvent[] {
   const offset = opts.transpose ?? 0
   const merged = mergeTies(doc.notes)
   const events: EngineEvent[] = []
   for (const n of merged) {
-    const selected = opts.hand === 'both' || n.h === opts.hand
-    let vel = n.v ?? 0.8
-    if (!selected) {
-      if (opts.mutedHandVelocity === undefined) continue // muted hand is silent
-      vel = opts.mutedHandVelocity
-    }
+    if (opts.hand !== 'both' && n.h !== opts.hand) continue // muted hand is silent
+    const vel = n.v ?? 0.8
     events.push({ beat: n.t, pitch: n.p + offset, durBeats: n.d, vel, hand: n.h })
   }
   return events

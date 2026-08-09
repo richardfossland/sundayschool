@@ -32,6 +32,19 @@ interface Props {
 }
 
 const progressKeyFor = (level: Level) => `bladspill:nivaa-${level}`
+// Vent-modus is UNTIMED, so it has no reading speed to record. It gets its own
+// key (never the `nivaa-` one, whose value is real noter/min from fri lesing)
+// and a fixed value of 1 — a pure "gjennomført"-marker, so a completed
+// wait-through still shows up in progress and in «Fortsett der du slapp».
+const VENT_DONE = 1
+const ventKeyFor = (level: Level) => `bladspill:vent-${level}`
+
+/** Remove a fired timer id from the pending list, IN PLACE — the unmount
+ * cleanup holds a reference to this exact array, so it must never be replaced. */
+function dropTimer(pending: ReturnType<typeof setTimeout>[], id: ReturnType<typeof setTimeout>) {
+  const i = pending.indexOf(id)
+  if (i >= 0) pending.splice(i, 1)
+}
 
 type Phase =
   | { kind: 'idle' } // fri: before count-in / vent: before start
@@ -70,7 +83,10 @@ export function ReadingSession({ level, mode, onScore }: Props) {
   // ── Wait-mode (vent) ───────────────────────────────────────────────────────
   const wait = useWaitMode(doc.notes, {
     hand: 'both',
-    onLoopComplete: () => setPhase({ kind: 'done', perMin: 0, accuracy: 100 }),
+    onLoopComplete: () => {
+      recordPractice(ventKeyFor(level), VENT_DONE)
+      setPhase({ kind: 'done', perMin: 0, accuracy: 100 })
+    },
   })
 
   // Reset everything when the exercise or mode changes.
@@ -91,7 +107,10 @@ export function ReadingSession({ level, mode, onScore }: Props) {
 
   const flashFri = useCallback((midi: number, kind: Feedback) => {
     setFriFeedback((f) => new Map(f).set(midi, kind))
+    // Drop the id once it has fired — the list is only a cancel-on-unmount
+    // ledger, and a fast reader would otherwise grow it by one per key press.
     const t = setTimeout(() => {
+      dropTimer(timers.current, t)
       setFriFeedback((f) => {
         const next = new Map(f)
         next.delete(midi)
@@ -169,17 +188,21 @@ export function ReadingSession({ level, mode, onScore }: Props) {
     setFriFeedback(new Map())
     let n = 3
     setPhase({ kind: 'countin', n })
-    const tick = () => {
-      n -= 1
-      if (n > 0) {
-        setPhase({ kind: 'countin', n })
-        timers.current.push(setTimeout(tick, 700))
-      } else {
-        startAt.current = Date.now()
-        setPhase({ kind: 'playing' })
-      }
+    const schedule = () => {
+      const t: ReturnType<typeof setTimeout> = setTimeout(() => {
+        dropTimer(timers.current, t)
+        n -= 1
+        if (n > 0) {
+          setPhase({ kind: 'countin', n })
+          schedule()
+        } else {
+          startAt.current = Date.now()
+          setPhase({ kind: 'playing' })
+        }
+      }, 700)
+      timers.current.push(t)
     }
-    timers.current.push(setTimeout(tick, 700))
+    schedule()
   }, [])
 
   const newExercise = useCallback(() => {

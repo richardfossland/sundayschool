@@ -89,7 +89,7 @@ export function TapSession({ exercise, level, onScore, onNewRhythm }: Props) {
     return () => {
       cancelPreviewRef.current?.()
       if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current)
-      getEngine().dispose()
+      getEngine().release()
     }
   }, [])
 

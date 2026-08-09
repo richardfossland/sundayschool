@@ -20,10 +20,6 @@ export interface BuildOptions {
    * song's original_key and the store's targetKey (nearest path) and passes it
    * in, keeping the engine dependent on nothing but the SongDoc + the offset. */
   transpose?: number
-  swing?: number // 0 = straight, ~0.5 = jazz swing (Tone.Transport.swing)
-  /** Play the non-selected hand at this velocity instead of muting it (per-hand
-   * / band practice). Undefined = the muted hand is silent. */
-  mutedHandVelocity?: number
   /** Extra generated accompaniment tracks (bass/drums/…) scheduled alongside the
    * piano score. Each gets its own Tone.Part + per-instrument Volume node, so
    * the band mixer can mute/level a track live without a rebuild. */
@@ -71,6 +67,10 @@ export class SongEngine {
   private beatsPerBar = 4
   private pickupBeats = 0
   private endEvent: number | null = null
+  /** Whether the current build loops. Remembered so play() can RE-ARM the
+   * end-stop: Tone.scheduleOnce removes its event once it has fired, so without
+   * this the second playback would never stop by itself. */
+  private looping = false
   private metro: Tone.MembraneSynth | null = null
   private metroId: number | null = null
   private loopStartBeat = 0
@@ -194,7 +194,6 @@ export class SongEngine {
     const mainEvents = buildEvents(doc, {
       hand: opts.hand,
       transpose: opts.transpose,
-      mutedHandVelocity: opts.mutedHandVelocity,
     })
     this.addPart('piano', this.toPartEvents(mainEvents))
 
@@ -210,8 +209,6 @@ export class SongEngine {
     this.pickupBeats = doc.pickupBeats
 
     Tone.Transport.bpm.value = opts.bpm
-    Tone.Transport.swing = opts.swing ?? 0
-    Tone.Transport.swingSubdivision = '8n'
     Tone.Transport.loop = opts.loop
     this.applyLoopRange()
     this.scheduleEnd(opts.loop)
@@ -231,12 +228,11 @@ export class SongEngine {
     this.applyLoopRange()
   }
 
-  setSwing(v: number) {
-    Tone.Transport.swing = v
-  }
-
-  // When not looping, stop cleanly at the end of the song.
+  // When not looping, stop cleanly at the end of the song. Tone.scheduleOnce
+  // DISPOSES the event as soon as it fires, so this must be re-armed before
+  // every play() — see play(). `looping` remembers the last intent.
   private scheduleEnd(loop: boolean) {
+    this.looping = loop
     if (this.endEvent !== null) {
       Tone.Transport.clear(this.endEvent)
       this.endEvent = null
@@ -298,6 +294,11 @@ export class SongEngine {
     for (const id of this.usedInstruments) await this.ensureInstrument(id)
     await ensureAudioRunning() // re-resume after the async load — iOS Safari suspends
 
+    // RE-ARM the end-stop. scheduleOnce is one-shot: after the first playback
+    // reached the end its event is gone, so a second play() would run past the
+    // end forever (isPlaying stuck on, and every wrap re-recording practice).
+    this.scheduleEnd(this.looping)
+
     // Optional one-bar count-in before the transport starts. When looping from a
     // mid-song A-point the opptakt doesn't apply, so treat pickup as 0 there.
     const now = Tone.now()
@@ -348,11 +349,30 @@ export class SongEngine {
     this.raf = requestAnimationFrame(this.tick)
   }
 
-  /** Tear down (route change). */
-  dispose() {
+  /**
+   * Leave a player (route change): stop the transport and drop everything tied
+   * to THIS song — the scheduled Parts and the end-stop — but KEEP the loaded
+   * instrument nodes. Samples are megabytes of decoded audio; throwing them away
+   * on every navigation re-downloads and re-decodes the piano and flashes
+   * isLoading on the next play. The beat listeners are deliberately kept too:
+   * they belong to the subscriber's own lifetime (each onBeat() returns its own
+   * unsubscribe), and clearing them here would silently deafen a listener that
+   * outlives one player.
+   */
+  release() {
     this.stop()
     for (const p of this.parts) p.dispose()
     this.parts = []
+    this.usedInstruments.clear()
+    if (this.endEvent !== null) {
+      Tone.Transport.clear(this.endEvent)
+      this.endEvent = null
+    }
+  }
+
+  /** Full teardown — samplers included. Only for tearing the whole app down. */
+  dispose() {
+    this.release()
     for (const node of this.nodes.values()) node.dispose()
     this.nodes.clear()
     for (const vol of this.volumes.values()) vol.dispose()

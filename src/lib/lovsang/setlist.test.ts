@@ -5,6 +5,7 @@ import {
   circleDistance,
   createSetlist,
   deleteSetlist,
+  entryMode,
   keyFlowScore,
   loadSetlists,
   moveEntry,
@@ -12,6 +13,7 @@ import {
   removeSetlist,
   saveSetlist,
   setEntryKey,
+  tonalCenter,
   transitionSuggestions,
   upsertSetlist,
   type SetlistEntry,
@@ -52,6 +54,33 @@ describe('keyFlowScore', () => {
     expect(keyFlowScore(0, 9)).toEqual({ steps: 3, rating: 'krevende' }) // C → A
     expect(keyFlowScore(0, 6)).toEqual({ steps: 6, rating: 'krevende' }) // C → F#
   })
+
+  it('measures a minor key through its relative major', () => {
+    // C major → A minor is the SAME key signature: no move at all. Read as two
+    // major tonics it looks like three fifths ("krevende") — the old bug.
+    expect(keyFlowScore(0, 9, 'major', 'minor')).toEqual({ steps: 0, rating: 'god' })
+    expect(keyFlowScore(9, 0, 'minor', 'major')).toEqual({ steps: 0, rating: 'god' })
+    // d-moll (→ F) next to C is one fifth — a neighbour, not a leap.
+    expect(keyFlowScore(0, 2, 'major', 'minor')).toEqual({ steps: 1, rating: 'god' })
+    // Two minors compare through their own relative majors: a → e = C → G.
+    expect(keyFlowScore(9, 4, 'minor', 'minor')).toEqual({ steps: 1, rating: 'god' })
+  })
+})
+
+describe('tonalCenter', () => {
+  it('maps minor tonics to the relative major and leaves major alone', () => {
+    expect(tonalCenter(9, 'minor')).toBe(0) // a → C
+    expect(tonalCenter(2, 'minor')).toBe(5) // d → F
+    expect(tonalCenter(9, 'major')).toBe(9)
+    expect(tonalCenter(9)).toBe(9) // default = major
+  })
+})
+
+describe('entryMode', () => {
+  it('defaults to major for entries stored before mode existed', () => {
+    expect(entryMode({ workSlug: 'a', targetKey: 0 })).toBe('major')
+    expect(entryMode({ workSlug: 'a', targetKey: 0, mode: 'minor' })).toBe('minor')
+  })
 })
 
 // ── Overgangsforslag ─────────────────────────────────────────────────────────
@@ -91,6 +120,21 @@ describe('transitionSuggestions', () => {
     expect(s).toHaveLength(1)
     expect(s[0]).toContain('Samme toneart')
   })
+
+  it('names a minor target as moll and makes ii half-diminished', () => {
+    const s = transitionSuggestions(0, 9, 'minor') // C → a-moll: V = E7, ii = Bm7b5
+    expect(s[0]).toContain('dominanten i a-moll')
+    expect(s[0]).toContain('E7')
+    expect(s[1]).toContain('Bm7b5')
+    // Never sold as a major key.
+    expect(s.join(' ')).not.toContain('dominanten i A')
+  })
+
+  it('keeps the tonic minor in the same-key note', () => {
+    const s = transitionSuggestions(9, 9, 'minor')
+    expect(s[0]).toContain('Samme toneart (a-moll)')
+    expect(s[0]).toContain('Am')
+  })
 })
 
 // ── Setliste-analyse ─────────────────────────────────────────────────────────
@@ -129,8 +173,19 @@ describe('entry operations', () => {
   it('addEntry appends without mutating the input', () => {
     const out = addEntry(base, { workSlug: 'd', targetKey: 5 })
     expect(out).toHaveLength(4)
-    expect(out[3]).toEqual({ workSlug: 'd', targetKey: 5 })
+    expect(out[3]).toMatchObject({ workSlug: 'd', targetKey: 5 })
     expect(base).toHaveLength(3)
+  })
+
+  it('addEntry stamps a unique id and defaults the mode to major', () => {
+    const a = addEntry([], { workSlug: 'a', targetKey: 0 })[0]
+    const b = addEntry([], { workSlug: 'a', targetKey: 0 })[0]
+    expect(a.id).toBeTruthy()
+    expect(a.id).not.toBe(b.id) // ids survive reordering only if they're unique
+    expect(a.mode).toBe('major')
+    // An explicit mode (and id) is kept as given.
+    const minor = addEntry([], { workSlug: 'm', targetKey: 9, mode: 'minor', id: 'fixed' })[0]
+    expect(minor).toMatchObject({ id: 'fixed', mode: 'minor' })
   })
 
   it('removeEntryAt drops the indexed entry, ignores out-of-range', () => {
@@ -214,7 +269,23 @@ describe('localStorage wrapper', () => {
     saveSetlist(createSetlist('Morgen', [], 'm'))
     const lists = loadSetlists()
     expect(lists.map((l) => l.name)).toEqual(['Morgen', 'Kveld'])
-    expect(lists[1].entries).toEqual([{ workSlug: 'a', targetKey: 0 }])
+    expect(lists[1].entries).toEqual([
+      { workSlug: 'a', targetKey: 0, id: 'k_0', mode: 'major' },
+    ])
+  })
+
+  it('backfills id + mode on entries saved before those fields existed', () => {
+    const map = installStorage()
+    map.set(
+      'sundayschool_setlists',
+      JSON.stringify([
+        { id: 'old', name: 'Gammel', updatedAt: 1, entries: [{ workSlug: 'a', targetKey: 0 }] },
+      ]),
+    )
+    const [list] = loadSetlists()
+    expect(list.entries[0]).toEqual({ workSlug: 'a', targetKey: 0, id: 'old_0', mode: 'major' })
+    // Stable across reads — the id is derived, never regenerated.
+    expect(loadSetlists()[0].entries[0].id).toBe('old_0')
   })
 
   it('saveSetlist re-stamps updatedAt on write', () => {

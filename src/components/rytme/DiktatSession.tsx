@@ -74,7 +74,7 @@ export function DiktatSession({ level, onLevelChange, onComplete }: Props) {
   }, [level])
 
   // Tear the engine down on leave.
-  useEffect(() => () => getEngine().dispose(), [])
+  useEffect(() => () => getEngine().release(), [])
 
   const task = session.tasks[session.index]
   const bpmRef = useRef(BPM_BY_LEVEL[level - 1])

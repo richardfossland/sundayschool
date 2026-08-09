@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Music2 } from 'lucide-react'
 import type { Song } from '@/types/song'
-import { fetchSong } from '@/lib/songs'
 import { getEngine } from '@/lib/engine'
 import { nearestOffset, transposeDoc } from '@/lib/transpose'
 import { keyNameForTonic, spellPitch } from '@/lib/spelling'
@@ -31,18 +30,20 @@ function noteLabel(midi: number, keySignature: string): string {
   return `${sp.letter}${acc}${sp.octave}`
 }
 
-export function GiTonen({ workSlug, targetKey }: { workSlug: string; targetKey: number }) {
-  const [song, setSong] = useState<Song | null>(null)
+/** The song is loaded ONCE by the parent (a setlist mounts several of these per
+ * entry) and handed down; null = still loading, or unknown work. */
+export function GiTonen({ song, targetKey }: { song: Song | null; targetKey: number }) {
+  // The arpeggio is a chain of timeouts. They must be cancellable: a second
+  // press used to overlay a whole new chord on the running one, and leaving the
+  // page mid-sequence left notes to fire into a torn-down view.
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
+  const [running, setRunning] = useState(false)
 
-  useEffect(() => {
-    let alive = true
-    fetchSong(workSlug).then((s) => {
-      if (alive) setSong(s)
-    })
-    return () => {
-      alive = false
-    }
-  }, [workSlug])
+  const cancel = () => {
+    timers.current.forEach(clearTimeout)
+    timers.current = []
+  }
+  useEffect(() => cancel, [])
 
   const offset = song ? nearestOffset(song.original_key, targetKey) : 0
   const doc = song ? transposeDoc(song.doc, offset) : null
@@ -57,13 +58,21 @@ export function GiTonen({ workSlug, targetKey }: { workSlug: string; targetKey: 
 
   const giTonen = () => {
     const engine = getEngine()
-    // Arpeggiér treklangen, så la melodiens starttone runde av.
-    triad.forEach((m, i) => {
-      window.setTimeout(() => void engine.playNote(m, 0.75, 0.9), i * 200)
-    })
-    if (startPitch !== null) {
-      window.setTimeout(() => void engine.playNote(startPitch, 0.9, 1.2), triad.length * 200 + 250)
+    cancel() // aldri to sekvenser oppå hverandre
+    const at = (delayMs: number, run: () => void) => {
+      const t = setTimeout(() => {
+        const i = timers.current.indexOf(t)
+        if (i >= 0) timers.current.splice(i, 1)
+        run()
+      }, delayMs)
+      timers.current.push(t)
     }
+    // Arpeggiér treklangen, så la melodiens starttone runde av.
+    setRunning(true)
+    triad.forEach((m, i) => at(i * 200, () => void engine.playNote(m, 0.75, 0.9)))
+    const lastAt = triad.length * 200 + 250
+    if (startPitch !== null) at(lastAt, () => void engine.playNote(startPitch, 0.9, 1.2))
+    at(lastAt + 400, () => setRunning(false))
   }
 
   return (
@@ -88,7 +97,7 @@ export function GiTonen({ workSlug, targetKey }: { workSlug: string; targetKey: 
         <button
           type="button"
           onClick={giTonen}
-          disabled={!song}
+          disabled={!song || running}
           aria-label="Gi tonen"
           className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
           style={{ backgroundColor: 'var(--fag)', color: 'var(--color-scene)' }}

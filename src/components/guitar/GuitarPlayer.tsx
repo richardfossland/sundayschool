@@ -97,7 +97,8 @@ export function GuitarPlayer({ song }: Props) {
   const loopRef = useRef(loop)
   loopRef.current = loop
 
-  // Reset transport + gitar controls to the song's defaults on song change.
+  // Reset transport + gitar controls to the song's defaults on song change
+  // (metronome/countIn/bandMode are global — other fag turn them on).
   useEffect(() => {
     const st = usePlayer.getState()
     st.set({
@@ -110,13 +111,17 @@ export function GuitarPlayer({ song }: Props) {
       currentBeat: 0,
       capo: 0,
       strumPattern: null,
+      metronome: false,
+      countIn: false,
+      bandMode: false, // the mixer LEVELS (bandMix) are a preference — kept
     })
   }, [song.slug, song.original_key, song.default_bpm])
 
-  // Install the iOS audio unlock once; tear the engine down on leave.
+  // Install the iOS audio unlock once; release the engine (parts + transport,
+  // NOT the loaded samples) on leave.
   useEffect(() => {
     installAudioUnlock()
-    return () => getEngine().dispose()
+    return () => getEngine().release()
   }, [])
 
   // (Re)build when the sounding events change (key, capo, pattern, or band). The

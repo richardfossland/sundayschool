@@ -147,7 +147,13 @@ export function useWaitMode(notes: SongNote[], options: WaitModeOptions = {}): W
       next.set(midi, kind)
       return next
     })
+    // The pending list exists only so unmount can cancel; a timer that has
+    // already fired must drop out of it, or a long practice session grows an
+    // ever-longer array of dead ids (one per key press).
     const t = setTimeout(() => {
+      const i = timers.current.indexOf(t)
+      if (i >= 0) timers.current.splice(i, 1) // splice, not reassign: the unmount
+      // cleanup may hold a reference to this very array.
       setFeedback((prev) => {
         const next = new Map(prev)
         next.delete(midi)

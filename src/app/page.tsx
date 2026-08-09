@@ -6,6 +6,7 @@ import { ChurchSeasonHint, type SeasonHintData } from '@/components/ChurchSeason
 import { SUBJECTS } from '@/lib/subjects'
 import { FALLBACK_META } from '@/lib/songs'
 import { ALL_PATTERNS } from '@/data/grooves'
+import { LESSONS } from './lydteknikk/lessons'
 import { seasonsInOrder, seasonColorParts } from '@/lib/teologi/content'
 
 // ── Skolen — the school front page ────────────────────────────────────────────
@@ -23,6 +24,9 @@ const songTitles: Record<string, string> = Object.fromEntries(
 )
 const grooveTitles: Record<string, string> = Object.fromEntries(
   ALL_PATTERNS.map((g) => [g.id, g.label]),
+)
+const lessonTitles: Record<string, string> = Object.fromEntries(
+  LESSONS.map((l) => [l.slug, l.title]),
 )
 
 // The church-year seasons, reduced to what the hint banner needs (colour parsed,
@@ -61,7 +65,11 @@ export default function Home() {
         </section>
 
         {/* Fortsett der du slapp — hidden when there's no history */}
-        <ContinueLearning songTitles={songTitles} grooveTitles={grooveTitles} />
+        <ContinueLearning
+          songTitles={songTitles}
+          grooveTitles={grooveTitles}
+          lessonTitles={lessonTitles}
+        />
 
         {/* Primary subjects */}
         <section className="mx-auto max-w-5xl px-4 pt-6">

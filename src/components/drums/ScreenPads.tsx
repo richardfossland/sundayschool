@@ -69,10 +69,15 @@ function flashColor(kind: Flash['kind'], laneIndex: number): string {
 }
 
 /** Velocity for a pointer strike: a real pressure reading when the device gives
- * one, otherwise the vertical position (top third = soft ghost). Clamp 0.5–1. */
+ * one, otherwise the vertical position (top third = soft ghost). Clamp 0.5–1.
+ *
+ * A MOUSE has no pressure sensor but still reports a constant 0.5 while a button
+ * is held (per the Pointer Events spec), which is inside the 0–1 window — so
+ * trusting it made every single mouse click the weakest possible hit. Pressure
+ * is only believed from a pointer type that can actually measure it. */
 function velocityFromPointer(e: React.PointerEvent<HTMLButtonElement>): number {
   let v: number
-  if (e.pressure > 0 && e.pressure < 1) {
+  if (e.pointerType !== 'mouse' && e.pressure > 0 && e.pressure < 1) {
     v = e.pressure
   } else {
     const rect = e.currentTarget.getBoundingClientRect()

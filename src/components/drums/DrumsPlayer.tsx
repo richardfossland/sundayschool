@@ -65,7 +65,9 @@ export function DrumsPlayer({ song }: Props) {
       recordPractice(progressKey, bpmRef.current, usePlayer.getState().activeSectionId ?? undefined),
   })
 
-  // Reset transport controls to the song's defaults when the song changes.
+  // Reset transport controls to the song's defaults when the song changes
+  // (metronome/countIn/bandMode are global — the groove trainer turns count-in
+  // on for every learner, and that must not follow them into a song).
   useEffect(() => {
     usePlayer.getState().set({
       bpm: song.default_bpm,
@@ -73,13 +75,17 @@ export function DrumsPlayer({ song }: Props) {
       currentBeat: 0,
       activeSectionId: null,
       waitMode: false,
+      metronome: false,
+      countIn: false,
+      bandMode: false, // the mixer LEVELS (bandMix) are a preference — kept
     })
   }, [song.slug, song.default_bpm])
 
-  // Install the iOS audio unlock once; tear the engine down on leave.
+  // Install the iOS audio unlock once; release the engine (parts + transport,
+  // NOT the loaded samples) on leave.
   useEffect(() => {
     installAudioUnlock()
-    return () => getEngine().dispose()
+    return () => getEngine().release()
   }, [])
 
   // Solo mode: the piano main track plays the song (the "band") while the

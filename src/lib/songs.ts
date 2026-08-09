@@ -31,48 +31,64 @@ function toMeta(song: Song): SongMeta {
 export const FALLBACK_SONGS: Song[] = seedSongs.map(seedToSong)
 export const FALLBACK_META: SongMeta[] = FALLBACK_SONGS.map(toMeta)
 
-// Small client-side cache so navigating back to the library doesn't refetch.
+// ── Session caches ───────────────────────────────────────────────────────────
+// Both caches share one rule: a DEGRADED answer (network/API error, or an empty
+// table where rows were expected) is served once but NEVER cached. Caching it
+// would freeze the whole session on the seed library — a single dropped request
+// on load and the learner sees the bundled songs until they reload the tab.
+// A configured-but-genuinely-absent row, and the "no Supabase env at all" case,
+// are stable facts and cache normally.
+
 let metaCache: SongMeta[] | null = null
 let metaInFlight: Promise<SongMeta[]> | null = null
 
+async function loadMeta(): Promise<{ metas: SongMeta[]; degraded: boolean }> {
+  const supabase = createClient()
+  if (!supabase) return { metas: FALLBACK_META, degraded: false } // no env: stable
+  try {
+    const { data, error } = await supabase
+      .from('songs')
+      .select(META_COLUMNS)
+      .eq('status', 'published')
+      .order('difficulty', { ascending: true })
+      .order('title', { ascending: true })
+    if (error || !data || data.length === 0) return { metas: FALLBACK_META, degraded: true }
+    return { metas: data as unknown as SongMeta[], degraded: false }
+  } catch {
+    return { metas: FALLBACK_META, degraded: true }
+  }
+}
+
 /**
  * Load all published songs as lightweight metadata (no `doc`). Cached for the
- * session. Reads from Supabase when configured, otherwise the bundled seeds.
+ * session unless the answer was degraded. Reads from Supabase when configured,
+ * otherwise the bundled seeds.
  */
 export async function fetchSongs(): Promise<SongMeta[]> {
   if (metaCache) return metaCache
   if (metaInFlight) return metaInFlight
 
-  metaInFlight = (async () => {
-    const supabase = createClient()
-    if (!supabase) return FALLBACK_META
-    try {
-      const { data, error } = await supabase
-        .from('songs')
-        .select(META_COLUMNS)
-        .eq('status', 'published')
-        .order('difficulty', { ascending: true })
-        .order('title', { ascending: true })
-      if (error || !data || data.length === 0) return FALLBACK_META
-      return data as unknown as SongMeta[]
-    } catch {
-      return FALLBACK_META
-    }
-  })()
-
+  const inFlight = loadMeta().then(({ metas, degraded }) => {
+    if (!degraded) metaCache = metas
+    return metas
+  })
+  metaInFlight = inFlight
   try {
-    metaCache = await metaInFlight
-    return metaCache
+    return await inFlight
   } finally {
-    metaInFlight = null
+    if (metaInFlight === inFlight) metaInFlight = null
   }
 }
 
-/** Load a single published song (incl. `doc`) by slug, with seed fallback. */
-export async function fetchSong(slug: string): Promise<Song | null> {
+// slug → the in-flight/settled fetch. Lovsang mounts several widgets per entry,
+// each of which needs the same full song; without this each one pulled its own
+// copy of the heavy `doc` column.
+const songCache = new Map<string, Promise<Song | null>>()
+
+async function loadSong(slug: string): Promise<{ song: Song | null; degraded: boolean }> {
   const fallback = FALLBACK_SONGS.find((s) => s.slug === slug) ?? null
   const supabase = createClient()
-  if (!supabase) return fallback
+  if (!supabase) return { song: fallback, degraded: false } // no env: stable
   try {
     const { data, error } = await supabase
       .from('songs')
@@ -80,9 +96,23 @@ export async function fetchSong(slug: string): Promise<Song | null> {
       .eq('slug', slug)
       .eq('status', 'published')
       .maybeSingle()
-    if (error || !data) return fallback
-    return data as unknown as Song
+    if (error) return { song: fallback, degraded: true }
+    if (!data) return { song: fallback, degraded: false } // genuinely not published
+    return { song: data as unknown as Song, degraded: false }
   } catch {
-    return fallback
+    return { song: fallback, degraded: true }
   }
+}
+
+/** Load a single published song (incl. `doc`) by slug, with seed fallback.
+ * De-duplicated per slug for the session (degraded answers are not kept). */
+export function fetchSong(slug: string): Promise<Song | null> {
+  const hit = songCache.get(slug)
+  if (hit) return hit
+  const p = loadSong(slug).then(({ song, degraded }) => {
+    if (degraded) songCache.delete(slug)
+    return song
+  })
+  songCache.set(slug, p)
+  return p
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
   ChevronDown,
@@ -12,13 +12,15 @@ import {
   Waypoints,
   X,
 } from 'lucide-react'
-import type { Mode, Tradition } from '@/types/song'
+import type { Mode, Song, Tradition } from '@/types/song'
 import { KEY_NAMES } from '@/lib/music'
 import { cn } from '@/lib/cn'
+import { fetchSong } from '@/lib/songs'
 import {
   addEntry,
   analyzeSetlist,
   createSetlist,
+  entryMode,
   moveEntry,
   removeEntryAt,
   setEntryKey,
@@ -72,6 +74,47 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
 
   const workBySlug = useMemo(() => new Map(works.map((w) => [w.workSlug, w])), [works])
   const analysis = useMemo(() => analyzeSetlist(entries), [entries])
+
+  // Lister lagret før innslagene bar modus leses som dur. Så snart biblioteket
+  // er lastet fyller vi inn verkets ekte modus, ellers ville en gammel mollsang
+  // bli flyt-analysert som dur for alltid (parallelltonearter feilmeldt som
+  // «krevende overgang»). Skrives til lageret ved neste «Lagre».
+  useEffect(() => {
+    setEntries((es) => {
+      let changed = false
+      const next = es.map((e) => {
+        if (e.mode) return e
+        const w = workBySlug.get(e.workSlug)
+        if (!w) return e
+        changed = true
+        return { ...e, mode: w.mode }
+      })
+      return changed ? next : es
+    })
+  }, [workBySlug])
+
+  // ── Sangene bak innslagene ─────────────────────────────────────────────────
+  // Hentes ÉN gang her og sendes ned som prop. Både «gi tonen» og intro-øvingen
+  // trenger hele sangen (med den tunge doc-kolonnen); henter de hver for seg
+  // ender en liste på fire innslag med åtte parallelle nedlastinger av samme
+  // data. fetchSong dedupliserer i tillegg per slug for hele økta.
+  const [songs, setSongs] = useState<Record<string, Song | null>>({})
+  const neededSlugs = useMemo(
+    () => [...new Set(entries.map((e) => e.workSlug))].sort().join('|'),
+    [entries],
+  )
+  useEffect(() => {
+    if (!neededSlugs) return
+    let alive = true
+    for (const slug of neededSlugs.split('|')) {
+      void fetchSong(slug).then((s) => {
+        if (alive) setSongs((prev) => (slug in prev && prev[slug] === s ? prev : { ...prev, [slug]: s }))
+      })
+    }
+    return () => {
+      alive = false
+    }
+  }, [neededSlugs])
   const transitionByFrom = useMemo(
     () => new Map(analysis.perTransition.map((t) => [t.fromIndex, t])),
     [analysis],
@@ -91,7 +134,11 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
   }
 
   const add = (w: WorkOption) => {
-    setEntries((e) => addEntry(e, { workSlug: w.workSlug, targetKey: w.originalKey }))
+    // Modusen følger med verket: uten den leses en mollsang som dur, og
+    // flyt-analysen dømmer parallelltonearter som «krevende overgang».
+    setEntries((e) =>
+      addEntry(e, { workSlug: w.workSlug, targetKey: w.originalKey, mode: w.mode }),
+    )
     setQuery('')
   }
 
@@ -118,11 +165,15 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
           <h2 className="font-display text-2xl text-[var(--color-ivory)]">{w?.title ?? entry.workSlug}</h2>
           {w?.subtitle && <p className="mt-1 text-sm text-[var(--color-muted)]">{w.subtitle}</p>}
           <p className="mt-1 text-sm text-[var(--fag)]">
-            {keyLabel(entry.targetKey, w?.mode ?? 'major')}
+            {keyLabel(entry.targetKey, entryMode(entry))}
           </p>
           <div className="mt-4 flex flex-col gap-3">
-            <GiTonen workSlug={entry.workSlug} targetKey={entry.targetKey} />
-            <IntroTrening workSlug={entry.workSlug} targetKey={entry.targetKey} />
+            <GiTonen song={songs[entry.workSlug] ?? null} targetKey={entry.targetKey} />
+            <IntroTrening
+              song={songs[entry.workSlug] ?? null}
+              workSlug={entry.workSlug}
+              targetKey={entry.targetKey}
+            />
           </div>
         </div>
 
@@ -232,7 +283,10 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
             const w = workBySlug.get(entry.workSlug)
             const trans = transitionByFrom.get(i)
             return (
-              <li key={`${entry.workSlug}-${i}`} className="flex flex-col gap-3">
+              // Nøkkelen er innslagets EGEN id, ikke posisjonen: med en
+              // indeksnøkkel remonterer React alt fra og med et flyttet innslag,
+              // og en intro som spiller rives ned midt i.
+              <li key={entry.id ?? `${entry.workSlug}-${i}`} className="flex flex-col gap-3">
                 <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
@@ -310,8 +364,12 @@ export function SetlistBuilder({ works, initial, onSave, onDelete, onBack }: Pro
                   </div>
 
                   <div className="mt-4 flex flex-col gap-3">
-                    <GiTonen workSlug={entry.workSlug} targetKey={entry.targetKey} />
-                    <IntroTrening workSlug={entry.workSlug} targetKey={entry.targetKey} />
+                    <GiTonen song={songs[entry.workSlug] ?? null} targetKey={entry.targetKey} />
+                    <IntroTrening
+                      song={songs[entry.workSlug] ?? null}
+                      workSlug={entry.workSlug}
+                      targetKey={entry.targetKey}
+                    />
                   </div>
                 </div>
 
