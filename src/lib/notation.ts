@@ -22,8 +22,8 @@
 //      settings), the hand splits into two layers: the moving voice keeps the
 //      main layer, the sustained voice gets a second one.
 
-import type { SongDoc, SongNote, Hand } from '@/types/song'
-import { vexKey } from './spelling'
+import type { SongDoc, SongNote, SongChord, Hand } from '@/types/song'
+import { vexKey, type ChordContext } from './spelling'
 import { parseKeySignature } from './spelling'
 
 const EPS = 1e-6
@@ -354,6 +354,59 @@ function cutPieces(doc: SongDoc, ranges: BarRange[], hand: Hand): Piece[][] {
   return perBar
 }
 
+/**
+ * The chord sounding at a beat, or null outside every chord's span. Chords tile
+ * the song in onset order, so this is a binary search — the planner asks once
+ * per note and a linear scan would make spelling quadratic on the long
+ * generated arrangements.
+ */
+export function chordAtBeat(chords: SongChord[], beat: number): SongChord | null {
+  let lo = 0
+  let hi = chords.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const c = chords[mid]
+    if (beat < c.t - EPS) hi = mid - 1
+    else if (beat >= c.t + c.d - EPS) lo = mid + 1
+    else return c
+  }
+  return null
+}
+
+/**
+ * The VexFlow key string for every note in the doc, indexed like `doc.notes`.
+ *
+ * Spelling is decided ONCE per note, from the chord sounding at the note's own
+ * onset — never per notehead. Two things depend on that: a note cut at a
+ * barline keeps one spelling across both halves (its second piece starts under
+ * whatever chord the next bar opens with), and an authored tie chain inherits
+ * the head's chord, so the two noteheads a tie joins can never disagree about
+ * which line they sit on.
+ */
+function planNoteKeys(doc: SongDoc): string[] {
+  const chords = [...doc.chords].sort((a, b) => a.t - b.t)
+  const ctx: (ChordContext | null)[] = doc.notes.map((n) => {
+    const c = chordAtBeat(chords, n.t)
+    return c ? { r: c.r, q: c.q } : null
+  })
+
+  const startsAt = new Map<string, number>()
+  doc.notes.forEach((n, i) => {
+    const id = noteId(n.h, n.p, n.t)
+    if (!startsAt.has(id)) startsAt.set(id, i)
+  })
+  // Onset order, so a chain of three or more tied notes propagates in one pass.
+  const order = doc.notes.map((_, i) => i).sort((a, b) => doc.notes[a].t - doc.notes[b].t)
+  for (const i of order) {
+    const n = doc.notes[i]
+    if (!n.tie) continue
+    const j = startsAt.get(noteId(n.h, n.p, n.t + n.d))
+    if (j !== undefined && j !== i) ctx[j] = ctx[i]
+  }
+
+  return doc.notes.map((n, i) => vexKey(n.p, doc.keySignature, ctx[i]))
+}
+
 interface Layer {
   tokens: Token[]
   cursor: number
@@ -394,7 +447,7 @@ function clipLayer(layer: Layer, to: number) {
 
 /** Plan one hand of one bar into 1–2 layers of tokens. */
 function planHand(
-  doc: SongDoc,
+  noteKeys: string[],
   bar: BarRange,
   barIdx: number,
   hand: Hand,
@@ -446,7 +499,7 @@ function planHand(
 
       const sorted = [...sub].sort((a, b) => a.p - b.p)
       const midis = sorted.map((pc) => pc.p)
-      const keys = midis.map((p) => vexKey(p, doc.keySignature))
+      const keys = sorted.map((pc) => noteKeys[pc.noteIdx])
       for (const seg of splitDuration(sub[0].d)) {
         const tokenIdx = layer.tokens.length
         sorted.forEach((pc, keyIdx) => {
@@ -520,10 +573,11 @@ export function planScore(doc: SongDoc): ScorePlan {
   const emitted = new Map<number, Pos[]>()
   const piecesR = cutPieces(doc, ranges, 'R')
   const piecesL = cutPieces(doc, ranges, 'L')
+  const noteKeys = planNoteKeys(doc)
 
   const bars: Bar[] = ranges.map((br, barIdx) => {
-    const r = planHand(doc, br, barIdx, 'R', piecesR[barIdx], emitted)
-    const l = planHand(doc, br, barIdx, 'L', piecesL[barIdx], emitted)
+    const r = planHand(noteKeys, br, barIdx, 'R', piecesR[barIdx], emitted)
+    const l = planHand(noteKeys, br, barIdx, 'L', piecesL[barIdx], emitted)
     return { ...br, R: r[0], L: l[0], R2: r[1] ?? null, L2: l[1] ?? null }
   })
 

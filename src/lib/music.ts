@@ -47,7 +47,10 @@ export function secondsPerBeat(bpm: number): number {
 }
 
 // Chord quality → semitone intervals from the root, for the keyboard overlay.
-const CHORD_INTERVALS: Record<string, number[]> = {
+// Exported so lib/spelling.ts can pair each interval with its stacked-third
+// degree (its LETTER step from the root) — the two tables must stay in lockstep,
+// which spelling.test.ts asserts.
+export const CHORD_INTERVALS: Record<string, number[]> = {
   '': [0, 4, 7],
   m: [0, 3, 7],
   '7': [0, 4, 7, 10],

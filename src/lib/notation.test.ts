@@ -10,9 +10,11 @@ import {
   barLayers,
   tupletGroups,
   vexflowKeySpec,
+  chordAtBeat,
   type Bar,
   type Token,
 } from './notation'
+import { transposeDoc } from './transpose'
 
 // Minimal doc factory — sections just need to tile [0, totalBeats].
 function doc(partial: Partial<SongDoc>): SongDoc {
@@ -494,6 +496,136 @@ describe('planScore — invariants over the whole seed library', () => {
           at += got
         }
         if (acc < n.d - 1e-6) bad.push(`${song.slug} ${n.h} p${n.p}@${n.t} d${n.d} → ${acc}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+})
+
+describe('chordAtBeat', () => {
+  const chords = [
+    { t: 0, d: 4, r: 2, q: '7' },
+    { t: 4, d: 4, r: 10, q: '' },
+    { t: 8, d: 8, r: 5, q: '' },
+  ]
+  it('is inclusive at the onset and exclusive at the end', () => {
+    expect(chordAtBeat(chords, 0)?.r).toBe(2)
+    expect(chordAtBeat(chords, 3.99)?.r).toBe(2)
+    expect(chordAtBeat(chords, 4)?.r).toBe(10)
+    expect(chordAtBeat(chords, 8)?.r).toBe(5)
+    expect(chordAtBeat(chords, 15.5)?.r).toBe(5)
+  })
+  it('returns null outside every chord, and on an empty list', () => {
+    expect(chordAtBeat(chords, -1)).toBeNull()
+    expect(chordAtBeat(chords, 16)).toBeNull()
+    expect(chordAtBeat([], 0)).toBeNull()
+  })
+})
+
+describe('planScore — enharmonic spelling reads the chord, not just the key', () => {
+  // All keys of every notehead in the plan, flattened.
+  const allKeys = (bars: Bar[]) =>
+    bars.flatMap((bar) =>
+      (['R', 'L'] as Hand[]).flatMap((h) => barLayers(bar, h).flatMap((l) => l.flatMap((t) => t.keys))),
+    )
+
+  it('spells the third of a secondary dominant from the chord (F major D7 → f#)', () => {
+    const plan = planScore(
+      doc({
+        keySignature: 'F',
+        totalBeats: 4,
+        notes: [{ p: 66, t: 0, d: 4, h: 'R' }],
+        chords: [{ t: 0, d: 4, r: 2, q: '7' }],
+      }),
+    )
+    expect(allKeys(plan.bars)).toEqual(['f#/4'])
+  })
+
+  it('leaves a tone outside the chord to the key signature', () => {
+    const plan = planScore(
+      doc({
+        keySignature: 'F',
+        totalBeats: 4,
+        notes: [{ p: 70, t: 0, d: 4, h: 'R' }], // bb, not a tone of D7
+        chords: [{ t: 0, d: 4, r: 2, q: '7' }],
+      }),
+    )
+    expect(allKeys(plan.bars)).toEqual(['bb/4'])
+  })
+
+  it('falls back to the key where no chord is authored at all', () => {
+    const plan = planScore(doc({ keySignature: 'F', totalBeats: 4, notes: [{ p: 66, t: 0, d: 4, h: 'R' }] }))
+    expect(allKeys(plan.bars)).toEqual(['gb/4'])
+  })
+
+  it('spells a note ONCE even when the barline cuts it under a different chord', () => {
+    // The second half of this note starts under a Bb chord, where pitch class 6
+    // is no chord tone at all. Both halves are one sound: one spelling.
+    const plan = planScore(
+      doc({
+        keySignature: 'F',
+        totalBeats: 8,
+        notes: [{ p: 66, t: 2, d: 4, h: 'R' }],
+        chords: [
+          { t: 0, d: 4, r: 2, q: '7' },
+          { t: 4, d: 4, r: 10, q: '' },
+        ],
+      }),
+    )
+    expect(allKeys(plan.bars)).toEqual(['f#/4', 'f#/4'])
+  })
+
+  it('an authored tie chain inherits the chord of its head', () => {
+    const plan = planScore(
+      doc({
+        keySignature: 'F',
+        totalBeats: 8,
+        notes: [
+          { p: 66, t: 2, d: 2, h: 'R', tie: true },
+          { p: 66, t: 4, d: 2, h: 'R' },
+        ],
+        chords: [
+          { t: 0, d: 4, r: 2, q: '7' },
+          { t: 4, d: 4, r: 10, q: '' },
+        ],
+      }),
+    )
+    expect(allKeys(plan.bars)).toEqual(['f#/4', 'f#/4'])
+    expect(plan.ties.length).toBe(1)
+  })
+
+  it('finds the chord even when doc.chords are authored out of order', () => {
+    const plan = planScore(
+      doc({
+        keySignature: 'F',
+        totalBeats: 8,
+        notes: [{ p: 66, t: 4, d: 4, h: 'R' }],
+        chords: [
+          { t: 4, d: 4, r: 2, q: '7' },
+          { t: 0, d: 4, r: 5, q: '' },
+        ],
+      }),
+    )
+    expect(allKeys(plan.bars)).toEqual(['f#/4'])
+  })
+})
+
+describe('planScore — every tie joins two noteheads of the SAME spelling', () => {
+  // A tie that runs between two differently spelled noteheads draws a slur
+  // between two staff lines. Spelling is decided per NOTE for exactly this
+  // reason; the sweep across the transposition ring is what pins it down.
+  it('holds across the seed library and the transposition ring', () => {
+    const bad: string[] = []
+    for (const song of seedSongs) {
+      for (const off of [-6, -3, 0, 4, 6]) {
+        const plan = planScore(transposeDoc(song.doc, off))
+        for (const tie of plan.ties) {
+          const from = barLayers(plan.bars[tie.fromBar], tie.hand)[tie.fromLayer][tie.fromToken]
+          const to = barLayers(plan.bars[tie.toBar], tie.hand)[tie.toLayer][tie.toToken]
+          const a = from?.keys[tie.fromKey]
+          const b = to?.keys[tie.toKey]
+          if (a !== b) bad.push(`${song.slug} ${off >= 0 ? '+' : ''}${off}: ${a} → ${b}`)
+        }
       }
     }
     expect(bad).toEqual([])
