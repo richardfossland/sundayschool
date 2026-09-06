@@ -4,9 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Ear, Music3, Piano, RotateCcw, Waves } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
 import { ExerciseCard } from '@/components/gehor/ExerciseCard'
-import { AnswerKeyboard } from '@/components/gehor/AnswerKeyboard'
-import { getEngine } from '@/lib/engine'
-import { installAudioUnlock } from '@/lib/audio-unlock'
+import { AnswerKeyboard, preloadAnswerKeyboard } from '@/components/gehor/AnswerKeyboardLazy'
+import { installAudioUnlockSoon } from '@/lib/audio-unlock-lazy'
 import {
   chordQualityExercise,
   createRng,
@@ -100,21 +99,31 @@ export default function GehorPage() {
   const [best, setBest] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    installAudioUnlock()
+    installAudioUnlockSoon()
     setBest(getProgress().bestBpm)
   }, [])
 
   const start = (type: ExerciseType, level: Level) => {
+    // Warm what the running session will reach for. The menu itself is buttons
+    // and text, so neither the engine (and Tone behind it) nor the answer
+    // keyboard belongs in this route's first load — but by the time the learner
+    // has read the first task and pressed «Spill», both are here.
+    void import('@/lib/engine')
+    if (type === 'melodi') preloadAnswerKeyboard()
     setResult(null)
     setSession(buildSession(type, level, Date.now()))
   }
 
   const current = session?.exercises[session.index]
 
-  // (Re)play the current task's audio.
+  // (Re)play the current task's audio. The engine is imported here rather than
+  // at the top of the file: it carries Tone, and this page's menu — the three
+  // exercise cards with their level buttons — must paint without it. start()
+  // has already warmed the chunk, so this await is normally already settled.
   const play = useMemo(() => {
     if (!session || !current) return () => {}
-    return () => {
+    return async () => {
+      const { getEngine } = await import('@/lib/engine')
       const engine = getEngine()
       if (session.type === 'intervall') {
         const ex = current as IntervalExercise

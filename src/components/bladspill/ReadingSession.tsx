@@ -10,6 +10,7 @@ import { connectMidi, type MidiConnection } from '@/lib/midi'
 import { useWaitMode, type Feedback } from '@/lib/useWaitMode'
 import { recordPractice } from '@/lib/progress'
 import { createRng, generateReadingExercise, type Level } from '@/lib/bladspill/exercises'
+import { progressKeyFor } from '@/lib/bladspill/progress-key'
 
 // ── ReadingSession — the bladspill trainer ────────────────────────────────────
 // Generates one reading exercise (a small SongDoc) from a per-mount seed, shows
@@ -31,7 +32,6 @@ interface Props {
   onScore?: (bestPerMin: number) => void
 }
 
-const progressKeyFor = (level: Level) => `bladspill:nivaa-${level}`
 // Vent-modus is UNTIMED, so it has no reading speed to record. It gets its own
 // key (never the `nivaa-` one, whose value is real noter/min from fri lesing)
 // and a fixed value of 1 — a pure "gjennomført"-marker, so a completed
@@ -346,5 +346,3 @@ export function ReadingSession({ level, mode, onScore }: Props) {
     </div>
   )
 }
-
-export { progressKeyFor }

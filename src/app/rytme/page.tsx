@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, AudioLines, Hand, ListMusic, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
 import { AppShell } from '@/components/AppShell'
-import { TapSession } from '@/components/rytme/TapSession'
-import { DiktatSession } from '@/components/rytme/DiktatSession'
-import { installAudioUnlock } from '@/lib/audio-unlock'
+import { TapSession, DiktatSession } from '@/components/rytme/SessionsLazy'
+import { installAudioUnlockSoon } from '@/lib/audio-unlock-lazy'
 import { createRng, generateRhythm, type Level, type RhythmExercise } from '@/lib/rytme/exercises'
 import { getProgress, recordPractice } from '@/lib/progress'
 import { cn } from '@/lib/cn'
@@ -41,7 +40,9 @@ export default function RytmePage() {
   const [diktatResult, setDiktatResult] = useState<number | null>(null)
 
   useEffect(() => {
-    installAudioUnlock()
+    // audio-unlock imports Tone, so it is fetched rather than bundled — see
+    // installAudioUnlockSoon. Still installed on mount, long before any click.
+    installAudioUnlockSoon()
     setBest(getProgress().bestBpm)
   }, [])
 

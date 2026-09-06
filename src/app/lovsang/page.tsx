@@ -6,6 +6,7 @@ import type { SongMeta } from '@/types/song'
 import { AppShell } from '@/components/AppShell'
 import { SetlistBuilder, type WorkOption } from '@/components/lovsang/SetlistBuilder'
 import { fetchSongs } from '@/lib/songs'
+import { installAudioUnlockSoon } from '@/lib/audio-unlock-lazy'
 import {
   analyzeSetlist,
   createSetlist,
@@ -59,9 +60,9 @@ export default function LovsangPage() {
   const [draft, setDraft] = useState<Setlist | null>(null)
 
   useEffect(() => {
-    // Dynamic: audio-unlock imports Tone, and this page must not pay for it
-    // before the learner opens something that actually makes a sound.
-    void import('@/lib/audio-unlock').then((m) => m.installAudioUnlock())
+    // audio-unlock imports Tone, and this page must not pay for it before the
+    // learner opens something that actually makes a sound — see the helper.
+    installAudioUnlockSoon()
     setSetlists(loadSetlists())
     let alive = true
     fetchSongs().then((rows) => {

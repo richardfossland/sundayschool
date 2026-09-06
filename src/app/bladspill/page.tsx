@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Eye, Timer } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
-import { ReadingSession, progressKeyFor } from '@/components/bladspill/ReadingSession'
+import { ReadingSession, preloadReadingSession } from '@/components/bladspill/ReadingSessionLazy'
+import { progressKeyFor } from '@/lib/bladspill/progress-key'
 import { SUBJECT_BY_ID } from '@/lib/subjects'
-import { installAudioUnlock } from '@/lib/audio-unlock'
+import { installAudioUnlockSoon } from '@/lib/audio-unlock-lazy'
 import { getProgress } from '@/lib/progress'
 import { type Level } from '@/lib/bladspill/exercises'
 import { cn } from '@/lib/cn'
@@ -59,11 +60,22 @@ export default function BladspillPage() {
   const [mode, setMode] = useState<'vent' | 'fri' | null>(null)
 
   useEffect(() => {
-    installAudioUnlock()
+    installAudioUnlockSoon()
     setBest(getProgress().bestBpm)
   }, [])
 
   const started = level !== null && mode !== null
+
+  // The menu asks for two choices; warming the trainer on the first of them
+  // means the second one usually lands on a ready chunk, not a placeholder.
+  const chooseLevel = (l: Level) => {
+    preloadReadingSession()
+    setLevel(l)
+  }
+  const chooseMode = (m: 'vent' | 'fri') => {
+    preloadReadingSession()
+    setMode(m)
+  }
 
   const reset = () => {
     setLevel(null)
@@ -124,7 +136,7 @@ export default function BladspillPage() {
                     <button
                       key={l.level}
                       type="button"
-                      onClick={() => setLevel(l.level)}
+                      onClick={() => chooseLevel(l.level)}
                       className={cn(
                         'rounded-2xl border px-5 py-4 text-left transition-colors',
                         level === l.level
@@ -158,7 +170,7 @@ export default function BladspillPage() {
                   <button
                     key={id}
                     type="button"
-                    onClick={() => setMode(id)}
+                    onClick={() => chooseMode(id)}
                     className={cn(
                       'rounded-2xl border p-5 text-left transition-colors',
                       mode === id

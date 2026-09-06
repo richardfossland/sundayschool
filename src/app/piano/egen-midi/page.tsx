@@ -4,7 +4,6 @@ import { useCallback, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Upload, ShieldCheck, FileMusic } from 'lucide-react'
 import type { Song } from '@/types/song'
-import { importMidiFile } from '@/lib/midi-import'
 import { SongPlayerLazy } from '@/components/SongPlayerLazy'
 import { AppShell } from '@/components/AppShell'
 import { cn } from '@/lib/cn'
@@ -24,8 +23,13 @@ export default function EgenMidiPage() {
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // The MIDI parser (@tonejs/midi + the song-format schema) is pulled in with
+  // the file, not with the page: until someone actually drops a .mid there is
+  // nothing to parse, and this route's first paint is a dropzone. The «Leser
+  // filen …» state already covers the wait.
   const handleFile = useCallback(async (file: File) => {
     setState({ status: 'parsing' })
+    const { importMidiFile } = await import('@/lib/midi-import')
     const result = await importMidiFile(file)
     if (result.ok) setState({ status: 'ready', song: result.song })
     else setState({ status: 'error', error: result.error, problems: result.problems })

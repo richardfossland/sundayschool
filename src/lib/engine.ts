@@ -231,6 +231,24 @@ export class SongEngine {
   // When not looping, stop cleanly at the end of the song. Tone.scheduleOnce
   // DISPOSES the event as soon as it fires, so this must be re-armed before
   // every play() — see play(). `looping` remembers the last intent.
+  //
+  // stop() is called STRAIGHT from the scheduled callback, deliberately NOT via
+  // Tone.Draw. Draw delivers on requestAnimationFrame, and a fully backgrounded
+  // tab never gets a frame — so the song would run to the end, the event would
+  // fire, and nothing would happen: the transport kept rolling and isPlaying
+  // stayed on until the tab was looked at again. Transport callbacks are driven
+  // by Tone's own clock (a worker-timer → main thread), which keeps ticking
+  // while hidden, so the stop lands on time either way.
+  //
+  // Safe to call from here: the callback runs on the main thread like any other
+  // timer (there is no "audio thread" to cross in JS), Tone invokes scheduled
+  // callbacks over a COPY of the timeline (Timeline._iterate slices), so the
+  // Transport.clear() inside stop() cannot disturb the iteration, and stop() is
+  // re-entrant — every step is either idempotent or null-guarded, so a user
+  // pressing Stop in the same instant just stops an already-stopped transport.
+  // The UI does not need a frame either: isPlaying/currentBeat go through the
+  // store (React schedules on a MessageChannel, not rAF) and the beat listeners
+  // write to the DOM imperatively.
   private scheduleEnd(loop: boolean) {
     this.looping = loop
     if (this.endEvent !== null) {
@@ -239,7 +257,7 @@ export class SongEngine {
     }
     if (!loop) {
       this.endEvent = Tone.Transport.scheduleOnce(() => {
-        Tone.Draw.schedule(() => this.stop(), Tone.now())
+        this.stop()
       }, this.beatToTicks(this.totalBeats))
     }
   }
