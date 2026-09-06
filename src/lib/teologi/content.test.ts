@@ -37,6 +37,11 @@ describe('teologi content — validation', () => {
       'amazing-grace', 'glade-jul', 'joyful-joyful', 'kirken-den-er-et-gammelt-hus',
       'kumbaya', 'paskemorgen', 'swing-low', 'what-a-friend', 'when-the-saints',
       'joy-to-the-world', 'naa-takker-alle-gud',
+      // W-C round: the 14 works given their own article.
+      'it-is-well-with-my-soul', 'holy-holy-holy', 'abide-with-me', 'blessed-assurance',
+      'come-thou-fount', 'nearer-my-god-to-thee', 'just-as-i-am', 'o-come-all-ye-faithful',
+      'deilig-er-jorden', 'go-down-moses', 'deep-river', 'deg-vaere-aere',
+      'vaar-gud-han-er-saa-fast-en-borg',
     ]
     for (const work of COVERED_WORKS) {
       expect(hymnStoryFor(work), `work '${work}' has no hymn story`).not.toBeNull()
