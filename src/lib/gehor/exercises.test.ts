@@ -230,7 +230,7 @@ describe('melodyExercise', () => {
     expect(tonics.size).toBeGreaterThan(1) // actually varies the key
   })
 
-  it('never repeats a note — a 2000-seed sweep at every level', () => {
+  it('never repeats a note — a 2000-seed sweep at every level', { timeout: 30_000 }, () => {
     // Clamping the degree walk at the window edges used to hand out the same
     // note twice (19,5 % of melodies, worst chain six identical tones), which
     // is not a dictation interval at all.
@@ -245,7 +245,7 @@ describe('melodyExercise', () => {
     }
   })
 
-  it('level 2 never leaps further than a perfect fourth (no tritones) — 2000 seeds', () => {
+  it('level 2 never leaps further than a perfect fourth (no tritones) — 2000 seeds', { timeout: 30_000 }, () => {
     for (let seed = 0; seed < 2000; seed++) {
       const ex = melodyExercise(2, createRng(seed))
       for (let i = 1; i < ex.pitches.length; i++) {

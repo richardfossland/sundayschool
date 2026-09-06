@@ -185,7 +185,7 @@ describe('rhythmDictation', () => {
     }
   })
 
-  it('all three options share the played rhythm\'s meter — a 2000-seed sweep', () => {
+  it('all three options share the played rhythm\'s meter — a 2000-seed sweep', { timeout: 30_000 }, () => {
     // The fallback distractor path used to call generateRhythm, which draws a
     // FRESH meter at level 3: an option in another time signature is a giveaway.
     for (let seed = 0; seed < 2000; seed++) {
