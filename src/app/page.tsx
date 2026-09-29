@@ -55,7 +55,7 @@ export default function Home() {
         <section className="mx-auto max-w-3xl px-4 pb-10 pt-16 text-center sm:pt-24">
           <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-1.5 text-xs font-medium uppercase tracking-wider text-[var(--color-muted)]">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[var(--color-amber)]" />
-            Del av Sunday Suite
+            Del av SundaySuite
           </p>
           <h1 className="font-display text-4xl leading-tight text-[var(--color-ivory)] sm:text-6xl">
             Sunday<span className="text-[var(--color-amber)]">School</span>
@@ -103,7 +103,7 @@ export default function Home() {
               ♪
             </span>
             SundaySchool er en del av{' '}
-            <span className="font-medium text-[var(--color-ivory)]">Sunday Suite</span>
+            <span className="font-medium text-[var(--color-ivory)]">SundaySuite</span>
           </p>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
             Fritt og lovlig repertoar.{' '}

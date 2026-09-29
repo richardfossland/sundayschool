@@ -6,7 +6,7 @@ sentrum: transponering som førsteklasses funksjon, ekte notasjon synkronisert
 med fallende noter, vent-modus per hånd, og (fase 2) besifringsmodus som
 validerer enhver gyldig voicing av akkorden.
 
-Del av [Sunday Suite](https://sundaysuite.app) — `school.sundaysuite.app`.
+Del av [SundaySuite](https://sundaysuite.app) — `school.sundaysuite.app`.
 
 ## Innhold og rettigheter
 
