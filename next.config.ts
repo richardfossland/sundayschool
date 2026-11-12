@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // TS 7 side-om-side: `typescript` peker på TS 6-kompatpakken (uten bin.tsc), så Next
+  // må bruke in-process API-typesjekkeren. Lastbærende, se docs/DECISIONS.md ADR-001.
+  experimental: {
+    useTypeScriptCli: false,
+  },
   // Skolen v2 moved the piano flows under /piano. Keep the old URLs working
   // (temporary — the routing may still evolve, so not a permanent 308).
   async redirects() {
