@@ -19,18 +19,18 @@
     "@supabase/supabase-js": "^2.119.0",
     "@tonejs/midi": "^2.0.28",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.72.0",
+    "lucide-react": "^1.73.0",
     "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "tailwind-merge": "^2.6.1",
-    "tone": "^15.5.66",
+    "tone": "^15.5.72",
     "vexflow": "^4.2.5",
     "zod": "^4.6.7",
     "zustand": "^5.1.0"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^1.20.16",
+    "@opennextjs/cloudflare": "^1.20.17",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^26.6.6",
     "@types/react": "^19",
@@ -40,6 +40,6 @@
     "tailwindcss": "^4",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^5.1.0",
-    "wrangler": "^4.160.1"
+    "wrangler": "^4.162.0"
   }
 }
